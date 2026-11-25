@@ -245,6 +245,8 @@ local GROUPS = {
           run = function(rest) ns.Dungeons.TestAsk(rest) end },
         { cmd = "test lgdebug", desc = "On/off: every step of a \"!lg\" question in your chat window – who claims, who answers, why not (only for you)",
           run = function() ns.CraftQuery.ToggleDebug() end },
+        { cmd = "test lgretry", desc = "Your client answers !lg questions again after the game had blocked its chat lines",
+          run = function() ns.CraftQuery.ResetSendBlock(); ns.Print("!lg: your client takes part in the answers again.") end },
         { cmd = "test search", args = "[text]", desc = "Opens the search with a sample text (default: \"blessing\")",
           run = function(rest) ns.Window.OpenSearch((rest or "") ~= "" and rest or "blessing") end },
         { cmd = "test role", desc = "Why your group role is (not) set automatically (nothing is changed)",

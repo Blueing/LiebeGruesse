@@ -341,7 +341,8 @@ function Craft.Status()
     local blocked, why = ns.ChatBlocked()
     local locale = GetLocale and ns.Call(GetLocale) or "?"
     return { answer = settings().answer and true or false, prefix = settings().prefix or "!lg", locale = locale,
-        english = englishClient(), blocked = blocked and true or false, why = why }
+        english = englishClient(), blocked = blocked and true or false, why = why,
+        sendBlocked = Craft.CannotSend and Craft.CannotSend() or false }
 end
 
 -- /lg test price <item>: the answer only in your chat window
@@ -361,10 +362,39 @@ function Craft.ToggleDebug()
     ns.Print("!lg debug: %s", Craft.debug and "ON – ask something in guild chat" or "off")
 end
 
-local function say(text, channel, target)
+---------------------------------------------------------------------------
+-- Some clients may not send chat lines on their own: the game blocks the call
+-- (ADDON_ACTION_BLOCKED) and the line is gone. Such a client stops taking part
+-- in the election for a few days, so another member answers – questions of its
+-- own player are then shown to them in their own chat window.
+---------------------------------------------------------------------------
+local BLOCK_DAYS = 3
+local lastSend   -- { t = GetTime(), text = text, own = asked by our own player }
+function Craft.CannotSend()
+    local t = ns.Database.Char().chatSendBlocked
+    return type(t) == "number" and ns.Now() - t < BLOCK_DAYS * 86400
+end
+function Craft.ResetSendBlock() ns.Database.Char().chatSendBlocked = nil end
+
+local function showLocally(text)
+    ns.Print("%s |cff999999(%s)|r", text, L.CRAFT_ONLY_YOU)
+end
+
+ns.On("ADDON_ACTION_BLOCKED", function(_, addon, func)
+    if addon ~= ns.name or not lastSend or GetTime() - lastSend.t > 3 then return end
+    local first = not Craft.CannotSend()
+    ns.Database.Char().chatSendBlocked = ns.Now()
+    dbg("the game BLOCKED the chat line (%s) – this client stops answering for %d days", tostring(func), BLOCK_DAYS)
+    if lastSend.own then showLocally(lastSend.text) end
+    if first then ns.Print(L.CRAFT_SEND_BLOCKED:format(BLOCK_DAYS)) end
+    lastSend = nil
+end)
+
+local function say(text, channel, target, own)
     text = "[LG] " .. text
     local blocked, why = ns.ChatBlocked()
     dbg("sending to %s%s: %s", channel, blocked and (" – WAITS, chat blocked (" .. tostring(why) .. ")") or "", text)
+    lastSend = { t = GetTime(), text = text, own = own }
     -- automatic answers never go out from combat or a chat lockdown: the game blocks them
     ns.SendChatAuto("craft-answer-" .. (target or channel), text, channel, target)
 end
@@ -420,6 +450,18 @@ ns.On("CHAT_MSG_GUILD", function(_, text, sender)
     dbg("heard \"%s\" from %s – question \"%s\", dungeon: %s, English client: %s", text, tostring(sender), query,
         tostring(dungeon), tostring(englishClient()))
     if not dungeon and (#query < 3 or not englishClient()) then dbg("not answered here (too short or not English)"); return end
+    local own = ns.Names.IsMe(sender)
+    if Craft.CannotSend() then
+        -- this client may not post: others answer; our own questions are shown to us
+        dbg("not taking part: the game blocked this client's chat lines lately")
+        if own then
+            C_Timer.After(1.5, function()
+                local ok, reply = pcall(Craft.Reply, query, raw)
+                if ok and reply then showLocally("[LG] " .. reply) end
+            end)
+        end
+        return
+    end
     local key = Crafts.Normalize(query)
     if recent[key] and GetTime() - recent[key] < REPEAT then
         dbg("not again: \"%s\" was answered %d s ago (wait %d s)", key, GetTime() - recent[key], REPEAT); return
@@ -443,7 +485,7 @@ ns.On("CHAT_MSG_GUILD", function(_, text, sender)
             recent[key] = GetTime()
             local ok, reply = pcall(Craft.Reply, query, raw)
             if not ok then dbg("ERROR building the answer: %s", tostring(reply)); return end
-            say(reply, "GUILD")
+            say(reply, "GUILD", nil, own)
         end)
     end)
 end)
@@ -466,5 +508,6 @@ ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
     if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer then return end
     local query, raw = parseQuery(text)
     if not query then return end
+    if Craft.CannotSend() then return end
     if dungeonQuestion(query) or (#query >= 3 and englishClient()) then say(Craft.Reply(query, raw), "WHISPER", sender) end
 end)

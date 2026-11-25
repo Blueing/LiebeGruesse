@@ -674,6 +674,7 @@ function Dungeons.TestAsk(text)
         local yes, no = Theme.HexColor("good", L.YES), Theme.HexColor("bad", L.NO)
         print("  " .. L.DG_ASK_STATUS:format(st.answer and yes or no, st.prefix, st.locale, st.blocked and (no .. " (" .. tostring(st.why or "") .. ")") or yes))
         if not st.answer then print("  " .. Theme.HexColor("warn", L.DG_ASK_OFF)) end
+        if st.sendBlocked then print("  " .. Theme.HexColor("warn", L.DG_ASK_SEND_BLOCKED)) end
     end
 end
 
