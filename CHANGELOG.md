@@ -12,9 +12,9 @@ All notable changes to Liebe Grüße – Guild Tools. Newest first.
 - feat(dungeons): the nine new Forever dungeons are in the list too (Hall of Thanes, Ruins of Lordaeron, Excavation Site: Wetlands, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold, Shaper's Terrace), sorted by level and tagged "Forever"
 - feat(dungeons): asking in guild chat ("LFG Strat UD", "wer kommt mit scholo?", "LF1M heal BRD", common short names in English and German) puts the player on the list for 2 hours – also without the addon (tag "chat", role unknown, the message as note); trade messages are ignored; switch under My interest
 - feat(dungeons): your own chat message makes a short mark of yours that is synced; marking or editing it turns it into a normal mark
-- feat(dungeons): "!lg <dungeon>" in guild chat or as a whisper ("!lg ubrs", "!lg strat ud", also short names like "!lg zf") – exactly one addon user answers who wants to run it, online first with role; uses the !lg election of the crafting answers and works on every client language; whoever asks counts as looking for a group too (2 h) and is part of the answer
-- fix(crafts): when the game blocks a client's automatic chat line (ADDON_ACTION_BLOCKED), that client stops answering !lg questions for 3 days so another member answers; its own player sees the answer to their own questions in their chat window (/lg test lgretry, /lg test lgdebug)
-- feat(test): /lg test lfg with made-up members, /lg test lfgask [dungeon] shows the !lg answer, /lg test lfgchat [text] shows what is read from a chat message
+- feat(dungeons): "!lfg <dungeon>" in guild chat or as a whisper ("!lfg ubrs", "!lfg strat ud", also short names like "!lfg zf") – exactly one addon user answers who wants to run it, online first with role; "!lfg" alone lists the most wanted dungeons; whoever asks counts as looking for a group too (2 h) and is part of the answer; own election (message kind DE), !lg and the crafting answers are untouched; switch "Answer !lfg" under My interest
+- feat(dungeons): when the game blocks a client's automatic chat line (ADDON_ACTION_BLOCKED), that client stops answering !lfg for 3 days so another member answers; your own question is shown to you in your chat window when no answer shows up in guild chat
+- feat(test): /lg test lfg with made-up members, /lg test lfgask [dungeon] shows the !lfg answer, /lg test lfgchat [text] shows what is read from a chat message, /lg test lfgdebug and /lg test lfgretry
 
 ## [1.0.68] – 2026-11-25
 

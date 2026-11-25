@@ -540,9 +540,8 @@ function Dungeons.HeardChat(text, sender)
     local g = ns.Guild.Find(key)
     local level = (g and g.level) or (isMe and ns.Call(UnitLevel, "player")) or nil
     local keys
-    -- "!lg scholo": whoever asks who wants to go is looking for a group as well
-    local prefix = (ns.Database.Settings().craft or {}).prefix or "!lg"
-    local asked = text:match("^%s*" .. (prefix:gsub("%p", "%%%0")) .. "%s+(.+)$")
+    -- "!lfg scholo": whoever asks who wants to go is looking for a group as well
+    local asked = text:match("^%s*!lfg%s+(.-)%s*$")
     if asked then
         local pick
         keys, pick = Dungeons.ChatQuery(asked)
@@ -601,9 +600,13 @@ function Dungeons.TestChat(text)
 end
 
 ---------------------------------------------------------------------------
--- "!lg ubrs" in guild chat (or as a whisper): one addon user answers who
--- wants to run it. CraftQuery handles the "!lg" election and sending; it asks
--- here first whether the question is a dungeon.
+-- "!lfg <dungeon>" in guild chat (or as a whisper): exactly one addon user
+-- answers who wants to run it; "!lfg" alone lists the dungeons with the most
+-- interest. Own election (message kind "DE"), the same way as the crafting
+-- answers: every client draws a claim, the lowest one answers.
+-- A client whose chat lines the game blocks (ADDON_ACTION_BLOCKED) stays out
+-- for a few days, and the asker's own addon shows the answer locally when no
+-- answer showed up in guild chat.
 ---------------------------------------------------------------------------
 local QUERY_FILLER = { lfg = true, lfm = true, lf = true, dungeon = true, dungeons = true, run = true, who = true, wer = true }
 
@@ -631,8 +634,7 @@ end
 local CHAT_MAX = 240   -- "[LG] " is added in front; guild chat takes 255
 local function answerFor(dk, maxNames)
     local d = Dungeons.BY_KEY[dk]
-    local rows = {}
-    for _, r in ipairs(Dungeons.Interested(dk)) do if not r.test then rows[#rows + 1] = r end end
+    local rows = Dungeons.Interested(dk, false, true)
     if #rows == 0 then return L.DG_ANSWER_NONE:format(d.name) end
     table.sort(rows, function(a, b)
         if a.online ~= b.online then return a.online end
@@ -662,20 +664,165 @@ function Dungeons.ChatAnswer(text)
     end
 end
 
--- /lg test lfgask <dungeon>: the "!lg <dungeon>" answer, only for you
-function Dungeons.TestAsk(text)
-    text = tostring(text or "")
-    if not text:find("%S") then text = "ubrs" end
-    local answer = Dungeons.ChatAnswer(text)
-    ns.Print(L.TEST_TAG .. " " .. (answer and ("[LG] " .. answer) or L.DG_ASK_NO_DUNGEON:format(text)))
-    -- would this client answer in guild chat?
-    local st = ns.CraftQuery and ns.CraftQuery.Status and ns.CraftQuery.Status()
-    if st then
-        local yes, no = Theme.HexColor("good", L.YES), Theme.HexColor("bad", L.NO)
-        print("  " .. L.DG_ASK_STATUS:format(st.answer and yes or no, st.prefix, st.locale, st.blocked and (no .. " (" .. tostring(st.why or "") .. ")") or yes))
-        if not st.answer then print("  " .. Theme.HexColor("warn", L.DG_ASK_OFF)) end
-        if st.sendBlocked then print("  " .. Theme.HexColor("warn", L.DG_ASK_SEND_BLOCKED)) end
+-- "!lfg" alone: the dungeons with the most interest
+function Dungeons.TopAnswer()
+    local counts = Dungeons.Counts(true)
+    local list = {}
+    for _, d in ipairs(Dungeons.LIST) do
+        local c = counts[d.key]
+        if c and c.total > 0 then list[#list + 1] = { d = d, c = c } end
     end
+    if #list == 0 then return L.DG_TOP_NONE end
+    table.sort(list, function(a, b)
+        if a.c.total ~= b.c.total then return a.c.total > b.c.total end
+        if a.c.online ~= b.c.online then return a.c.online > b.c.online end
+        return a.d.order < b.d.order
+    end)
+    local parts = {}
+    for i, x in ipairs(list) do
+        if i > 6 then parts[#parts + 1] = L.CRAFT_MORE:format(#list - 6); break end
+        parts[#parts + 1] = ("%s %d%s"):format(x.d.short, x.c.total, x.c.online > 0 and (" (" .. x.c.online .. " online)") or "")
+    end
+    return (L.DG_TOP:format(table.concat(parts, ", "))):sub(1, CHAT_MAX)
+end
+
+-- the answer to "!lfg <text>" ("" = the top list)
+local function replyFor(q)
+    if q == "" then return Dungeons.TopAnswer() end
+    return Dungeons.ChatAnswer(q) or L.DG_ASK_UNKNOWN:format(q:sub(1, 40))
+end
+
+-- "!lfg", "!lfg scholo" -> "" / "scholo"; nil when it is no !lfg question
+local function parseAsk(text)
+    if text:match("^%s*!lfg%s*$") then return "" end
+    return text:match("^%s*!lfg%s+(.-)%s*$")
+end
+
+Dungeons.debug = false
+local function dbg(fmt, ...)
+    if Dungeons.debug then ns.Print("|cff88ccff[!lfg debug]|r " .. fmt, ...) end
+end
+function Dungeons.ToggleDebug()
+    Dungeons.debug = not Dungeons.debug
+    ns.Print("!lfg debug: %s", Dungeons.debug and "ON – ask something with !lfg in guild chat" or "off")
+end
+
+local function answersOn() return settings().answer ~= false and ns.Database.Settings().modules.dungeons ~= false end
+
+-- clients whose chat lines the game blocks stay out of the election for a while
+local BLOCK_DAYS = 3
+local lastSend      -- GetTime() of our last answer
+function Dungeons.CannotSend()
+    local t = ns.Database.Char().lfgSendBlocked
+    return type(t) == "number" and ns.Now() - t < BLOCK_DAYS * 86400
+end
+function Dungeons.ResetSendBlock()
+    ns.Database.Char().lfgSendBlocked = nil
+    ns.Print(L.DG_RETRY)
+end
+
+ns.On("ADDON_ACTION_BLOCKED", function(_, addon, func)
+    if addon ~= ns.name or not lastSend or GetTime() - lastSend > 3 then return end
+    local first = not Dungeons.CannotSend()
+    ns.Database.Char().lfgSendBlocked = ns.Now()
+    lastSend = nil
+    dbg("the game BLOCKED the chat line (%s) – this client stops answering for %d days", tostring(func), BLOCK_DAYS)
+    if first then ns.Print(L.DG_SEND_BLOCKED:format(BLOCK_DAYS)) end
+end)
+
+local function sendAnswer(text, channel, target)
+    lastSend = GetTime()
+    dbg("sending to %s: %s", channel, text)
+    if ns.SendChatAuto then ns.SendChatAuto("lfg-answer-" .. (target or channel), text, channel, target)
+    else ns.SendChat(text, channel, target) end
+end
+
+local function showLocally(text) ns.Print("%s |cff999999(%s)|r", text, L.DG_ONLY_YOU) end
+
+-- the election
+local ASK_REPEAT = 30
+local askRecent, askPending, askClaims = {}, {}, {}
+local ownWait       -- our own question: shown locally unless an answer shows up in guild chat
+
+local function onAsk(text, sender)
+    local q = parseAsk(text)
+    if not q then return end
+    local key = normalize(q):match("^%s*(.-)%s*$")
+    if key == "" then key = "*" end
+    if Names.IsMe(sender) then
+        local wait = { key = key }
+        ownWait = wait
+        C_Timer.After(4, function()
+            if ownWait ~= wait then return end
+            ownWait = nil
+            dbg("no answer in guild chat – shown only to you")
+            showLocally("[LG] " .. replyFor(q))
+        end)
+    end
+    if not answersOn() then dbg("answers are switched off here"); return end
+    if Dungeons.CannotSend() then dbg("not taking part: the game blocked this client's chat lines lately"); return end
+    if askRecent[key] and GetTime() - askRecent[key] < ASK_REPEAT then
+        dbg("not again: \"%s\" was answered %d s ago", key, GetTime() - askRecent[key]); return
+    end
+    if askPending[key] then return end
+    local token = math.random(1, 100000)
+    if ns.ChatBlocked and ns.ChatBlocked() then token = token + 1000000 end
+    local delay = 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.3
+    dbg("heard \"%s\" – my claim %d in %.2f s", text, token, delay)
+    local p = { token = token }
+    askPending[key] = p
+    p.timer = C_Timer.NewTimer(delay, function()
+        if askPending[key] ~= p then return end
+        if askClaims[key] and askClaims[key] < p.token then askPending[key] = nil; dbg("lost: claim %d is lower", askClaims[key]); return end
+        Comm.Send("DE", { q = key, n = p.token }, "GUILD", { priority = "alert" })
+        C_Timer.After(1.2, function()
+            if askPending[key] ~= p then return end
+            askPending[key] = nil
+            if askClaims[key] and askClaims[key] < p.token then dbg("lost after claiming"); return end
+            askRecent[key] = GetTime()
+            sendAnswer("[LG] " .. replyFor(q), "GUILD")
+        end)
+    end)
+end
+
+Comm.Register("DE", function(data, sender)
+    if type(data.q) ~= "string" or type(data.n) ~= "number" then return end
+    dbg("claim %d for \"%s\" from %s", data.n, data.q, tostring(sender))
+    if not askClaims[data.q] or data.n < askClaims[data.q] then askClaims[data.q] = data.n end
+    askRecent[data.q] = GetTime()
+    local p = askPending[data.q]
+    if p and data.n < p.token then
+        if p.timer then p.timer:Cancel() end
+        askPending[data.q] = nil
+    end
+    C_Timer.After(ASK_REPEAT, function() askClaims[data.q] = nil end)
+end)
+
+ns.On("CHAT_MSG_GUILD", function(_, text, sender)
+    if ns.IsSecret(text) or ns.IsSecret(sender) or type(text) ~= "string" or type(sender) ~= "string" then return end
+    -- an answer showed up: our own question needs no local line
+    if ownWait and text:find("^%[LG%]") then ownWait = nil end
+    onAsk(text, sender)
+end)
+
+-- whispered "!lfg …" is answered directly
+ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
+    if ns.IsSecret(text) or ns.IsSecret(sender) or type(text) ~= "string" or type(sender) ~= "string" then return end
+    local q = parseAsk(text)
+    if not q or not answersOn() or Dungeons.CannotSend() then return end
+    sendAnswer("[LG] " .. replyFor(q), "WHISPER", sender)
+end)
+
+-- /lg test lfgask [dungeon]: the "!lfg" answer, only for you, and whether this client would answer
+function Dungeons.TestAsk(text)
+    text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    ns.Print(L.TEST_TAG .. " [LG] " .. replyFor(text))
+    local yes, no = Theme.HexColor("good", L.YES), Theme.HexColor("bad", L.NO)
+    local blocked, why = false, nil
+    if ns.ChatBlocked then blocked, why = ns.ChatBlocked() end
+    print("  " .. L.DG_ASK_STATUS:format(answersOn() and yes or no, Dungeons.CannotSend() and no or yes,
+        blocked and (no .. " (" .. tostring(why or "") .. ")") or yes))
+    if Dungeons.CannotSend() then print("  " .. Theme.HexColor("warn", L.DG_ASK_SEND_BLOCKED)) end
 end
 
 ---------------------------------------------------------------------------
@@ -690,7 +837,8 @@ local function memberInfo(key)
 end
 
 -- rows for one dungeon: { key, name, class, level, online, me, test, e, ids }
-function Dungeons.Interested(dk, onlyOnline)
+-- noTest: without the made-up members of /lg test lfg (chat answers)
+function Dungeons.Interested(dk, onlyOnline, noTest)
     local rows, now = {}, ns.Now()
     local rosterKnown = next(ns.Guild.members) ~= nil
     local me = Names.Me()
@@ -709,7 +857,7 @@ function Dungeons.Interested(dk, onlyOnline)
         }
     end
     for key, rec in pairs(store()) do add(key, rec, false) end
-    if testRecords and GetTime() < testUntil then
+    if testRecords and GetTime() < testUntil and not noTest then
         for key, rec in pairs(testRecords) do add(key, rec, true) end
     end
     -- seen in guild chat (local, no role): only when the player has no mark of their own for it
@@ -750,12 +898,12 @@ function Dungeons.Interested(dk, onlyOnline)
     return rows
 end
 
--- per dungeon: total, online, main roles
-function Dungeons.Counts()
+-- per dungeon: total, online, main roles (real: without test members)
+function Dungeons.Counts(real)
     local out = {}
     for _, d in ipairs(Dungeons.LIST) do
         local c = { total = 0, online = 0, T = 0, H = 0, D = 0, names = {} }
-        for _, r in ipairs(Dungeons.Interested(d.key)) do
+        for _, r in ipairs(Dungeons.Interested(d.key, false, real)) do
             c.total = c.total + 1
             if r.online then c.online = c.online + 1 end
             if r.e.r then c[r.e.r] = (c[r.e.r] or 0) + 1 end
@@ -1239,6 +1387,9 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
     local chatCheck = UI.Check(my, L.DG_CHAT_PICKUP:format(Dungeons.CHAT_HOURS), function() return settings().chat ~= false end,
         function(v) settings().chat = v; fire() end, L.DG_CHAT_PICKUP_TIP)
     chatCheck:SetPoint("BOTTOMLEFT", 0, 32)
+    local answerCheck = UI.Check(my, L.DG_ANSWER_ON, function() return settings().answer ~= false end,
+        function(v) settings().answer = v end, L.DG_ANSWER_ON_TIP)
+    answerCheck:SetPoint("LEFT", chatCheck, "RIGHT", 16, 0)
 
     -- editor card
     local card = UI.Panel(my, "panel", "borderDim")
@@ -1412,6 +1563,7 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         mList:SetRows(rows)
         days:Refresh()
         chatCheck:Refresh()
+        answerCheck:Refresh()
         local d = Dungeons.BY_KEY[state.mine]
         local e = entry()
         cTitle:SetText(ns.Upper(d and d.name or ""))

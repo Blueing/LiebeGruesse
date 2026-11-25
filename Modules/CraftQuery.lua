@@ -322,27 +322,11 @@ function Craft.PriceAnswer(query, raw)
     return priceLine(hits[1])
 end
 
--- a dungeon name ("!lg ubrs") is answered by the dungeon interest module
-local function dungeonQuestion(query)
-    return ns.Dungeons and ns.Dungeons.ChatQuery and ns.Dungeons.ChatQuery(query) ~= nil
-end
-
--- any question: dungeon questions get who wants to go, price questions the price line
+-- any question: price questions get the price line
 function Craft.Reply(query, raw)
-    local dungeon = ns.Dungeons and ns.Dungeons.ChatAnswer and ns.Dungeons.ChatAnswer(query)
-    if dungeon then return dungeon end
     local isPrice, q, r = Craft.ParsePrice(query, raw)
     if isPrice and #q >= 3 then return Craft.PriceAnswer(q, r) end
     return Craft.Answer(query, raw)
-end
-
--- why "!lg" questions would (not) be answered by this client: for /lg test lfgask
-function Craft.Status()
-    local blocked, why = ns.ChatBlocked()
-    local locale = GetLocale and ns.Call(GetLocale) or "?"
-    return { answer = settings().answer and true or false, prefix = settings().prefix or "!lg", locale = locale,
-        english = englishClient(), blocked = blocked and true or false, why = why,
-        sendBlocked = Craft.CannotSend and Craft.CannotSend() or false }
 end
 
 -- /lg test price <item>: the answer only in your chat window
@@ -352,49 +336,8 @@ function Craft.TestPrice(text)
     ns.Print("[Test] [LG] %s", Craft.Reply("price " .. text))
 end
 
--- /lg test lgdebug: every step of a "!lg" question in your chat window (only for you)
-Craft.debug = false
-local function dbg(fmt, ...)
-    if Craft.debug then ns.Print("|cff88ccff[!lg debug]|r " .. fmt, ...) end
-end
-function Craft.ToggleDebug()
-    Craft.debug = not Craft.debug
-    ns.Print("!lg debug: %s", Craft.debug and "ON – ask something in guild chat" or "off")
-end
-
----------------------------------------------------------------------------
--- Some clients may not send chat lines on their own: the game blocks the call
--- (ADDON_ACTION_BLOCKED) and the line is gone. Such a client stops taking part
--- in the election for a few days, so another member answers – questions of its
--- own player are then shown to them in their own chat window.
----------------------------------------------------------------------------
-local BLOCK_DAYS = 3
-local lastSend   -- { t = GetTime(), text = text, own = asked by our own player }
-function Craft.CannotSend()
-    local t = ns.Database.Char().chatSendBlocked
-    return type(t) == "number" and ns.Now() - t < BLOCK_DAYS * 86400
-end
-function Craft.ResetSendBlock() ns.Database.Char().chatSendBlocked = nil end
-
-local function showLocally(text)
-    ns.Print("%s |cff999999(%s)|r", text, L.CRAFT_ONLY_YOU)
-end
-
-ns.On("ADDON_ACTION_BLOCKED", function(_, addon, func)
-    if addon ~= ns.name or not lastSend or GetTime() - lastSend.t > 3 then return end
-    local first = not Craft.CannotSend()
-    ns.Database.Char().chatSendBlocked = ns.Now()
-    dbg("the game BLOCKED the chat line (%s) – this client stops answering for %d days", tostring(func), BLOCK_DAYS)
-    if lastSend.own then showLocally(lastSend.text) end
-    if first then ns.Print(L.CRAFT_SEND_BLOCKED:format(BLOCK_DAYS)) end
-    lastSend = nil
-end)
-
-local function say(text, channel, target, own)
+local function say(text, channel, target)
     text = "[LG] " .. text
-    local blocked, why = ns.ChatBlocked()
-    dbg("sending to %s%s: %s", channel, blocked and (" – WAITS, chat blocked (" .. tostring(why) .. ")") or "", text)
-    lastSend = { t = GetTime(), text = text, own = own }
     -- automatic answers never go out from combat or a chat lockdown: the game blocks them
     ns.SendChatAuto("craft-answer-" .. (target or channel), text, channel, target)
 end
@@ -404,12 +347,6 @@ end
 local function drawToken(query, raw)
     local token = math.random(1, 100000)
     if ns.ChatBlocked() then token = token + 2000000 end
-    -- dungeon questions: every client knows the same, so only combat counts. The claim
-    -- lies below every crafting claim, so a version without dungeon answers (which
-    -- would say "no recipe found") always loses
-    if dungeonQuestion(query) then
-        return CLAIM_BASE - 10000000 + token, 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.15
-    end
     -- the client that knows the recipe answers (others may miss a profile)
     local isPrice, q, r = Craft.ParsePrice(query, raw)
     local ok, hits = pcall(Craft.Lookup, q, r)
@@ -438,61 +375,31 @@ local function parseQuery(text)
 end
 
 ns.On("CHAT_MSG_GUILD", function(_, text, sender)
-    if ns.IsSecret(text) or type(text) ~= "string" then return end
-    if not settings().answer then
-        if text:find("^%s*!") then dbg("heard \"%s\" – answers are switched off here", text) end
-        return
-    end
+    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
     local query, raw = parseQuery(text)
-    if not query then return end
-    -- dungeon names are the same in every client language and may be short ("!lg zf")
-    local dungeon = dungeonQuestion(query)
-    dbg("heard \"%s\" from %s – question \"%s\", dungeon: %s, English client: %s", text, tostring(sender), query,
-        tostring(dungeon), tostring(englishClient()))
-    if not dungeon and (#query < 3 or not englishClient()) then dbg("not answered here (too short or not English)"); return end
-    local own = ns.Names.IsMe(sender)
-    if Craft.CannotSend() then
-        -- this client may not post: others answer; our own questions are shown to us
-        dbg("not taking part: the game blocked this client's chat lines lately")
-        if own then
-            C_Timer.After(1.5, function()
-                local ok, reply = pcall(Craft.Reply, query, raw)
-                if ok and reply then showLocally("[LG] " .. reply) end
-            end)
-        end
-        return
-    end
+    if not query or #query < 3 then return end
     local key = Crafts.Normalize(query)
-    if recent[key] and GetTime() - recent[key] < REPEAT then
-        dbg("not again: \"%s\" was answered %d s ago (wait %d s)", key, GetTime() - recent[key], REPEAT); return
-    end
-    if pending[key] then dbg("already waiting for this question"); return end
+    if recent[key] and GetTime() - recent[key] < REPEAT then return end
+    if pending[key] then return end
     local token, delay = drawToken(query, raw)
-    dbg("my claim %d, sent in %.2f s", token, delay)
     pending[key] = { token = token }
     pending[key].timer = C_Timer.NewTimer(delay, function()
         local p = pending[key]
-        if not p then dbg("gave up: another client claimed first"); return end
-        if claims[key] and claims[key] < p.token then dbg("lost: claim %d is lower", claims[key]); pending[key] = nil; return end
+        if not p then return end
+        if claims[key] and claims[key] < p.token then pending[key] = nil; return end
         Comm.Send("CQ", { q = key, n = p.token }, "GUILD", { priority = "alert" })
-        dbg("claim sent – answering in 1.2 s unless someone claims lower")
         C_Timer.After(1.2, function()
             local still = pending[key]
             pending[key] = nil
-            if not still or (claims[key] and claims[key] < still.token) then
-                dbg("lost after claiming (lowest claim %s)", tostring(claims[key])); return
-            end
+            if not still or (claims[key] and claims[key] < still.token) then return end
             recent[key] = GetTime()
-            local ok, reply = pcall(Craft.Reply, query, raw)
-            if not ok then dbg("ERROR building the answer: %s", tostring(reply)); return end
-            say(reply, "GUILD", nil, own)
+            say(Craft.Reply(query, raw), "GUILD")
         end)
     end)
 end)
 
-Comm.Register("CQ", function(data, sender)
+Comm.Register("CQ", function(data)
     if type(data.q) ~= "string" or type(data.n) ~= "number" then return end
-    dbg("claim %d for \"%s\" from %s", data.n, data.q, tostring(sender))
     if not claims[data.q] or data.n < claims[data.q] then claims[data.q] = data.n end
     recent[data.q] = GetTime()
     local p = pending[data.q]
@@ -505,9 +412,7 @@ end)
 
 -- Whispered queries are answered directly
 ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
-    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer then return end
+    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
     local query, raw = parseQuery(text)
-    if not query then return end
-    if Craft.CannotSend() then return end
-    if dungeonQuestion(query) or (#query >= 3 and englishClient()) then say(Craft.Reply(query, raw), "WHISPER", sender) end
+    if query and #query >= 3 then say(Craft.Reply(query, raw), "WHISPER", sender) end
 end)
