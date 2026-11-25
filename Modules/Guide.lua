@@ -86,7 +86,7 @@ Guide.LIST = {
           "A yellow dot at an item: someone else in this dungeon wants it too.",
           "Items you get (bags or worn) leave your list by themselves.",
           "“Fits my level” and “Online only” narrow the lists.",
-          "“!lfg ubrs” in guild chat: one addon user answers who wants to go (online first, with role) – also for members without the addon. “!lfg” alone lists the most wanted dungeons.",
+          "“!lfg ubrs” in guild chat: one addon user answers who wants to go (online first, with role) – also for members without the addon. “!lfg” alone lists the most wanted dungeons. No answer in guild chat? You get it in your chat window – “[Post in guild chat]” posts it with one click.",
           "Asking in guild chat (“LFG Strat UD”, “wer kommt mit scholo?”) puts you on the list for 2 hours – also players without the addon (tag “chat”, role unknown). Switch: My interest › Pick up guild chat." },
       shared = "Your marks (dungeon, roles, note, item ids) – to guild members with the addon, when they change. Missed changes are synced at login. What others write in guild chat is only read by your own addon, nothing is sent.",
       cmds = { "/lg lfg", "!lfg [dungeon]", "/lg test lfg", "/lg test lfgchat [text]", "/lg test lfgask [dungeon]" } },

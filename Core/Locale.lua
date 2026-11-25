@@ -917,6 +917,7 @@ local enUS12 = {
     DG_ASK_STATUS = "!lfg answers on: %s · game lets this client post: %s · chat free now: %s",
     DG_ASK_SEND_BLOCKED = "Your game blocked this addon's chat lines lately – your client lets others answer !lfg and shows your own questions only to you. /lg test lfgretry tries again.",
     DG_ONLY_YOU = "only you see this",
+    DG_POST_LINK = "Post in guild chat",
     DG_SEND_BLOCKED = "Your game blocked the addon's !lfg answer in guild chat. Your client stops answering !lfg for %d days so another member answers; your own questions are shown to you here. (/lg test lfgretry tries again.)",
     DG_RETRY = "!lfg: your client answers again.",
     DG_ANSWER_ON = "Answer !lfg",

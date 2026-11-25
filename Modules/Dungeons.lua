@@ -737,7 +737,35 @@ local function sendAnswer(text, channel, target)
     else ns.SendChat(text, channel, target) end
 end
 
-local function showLocally(text) ns.Print("%s |cff999999(%s)|r", text, L.DG_ONLY_YOU) end
+-- The answer shown only to the asker carries a link "[Post in guild chat]".
+-- A click is a hardware event, so the game lets the line go out even where it
+-- blocks automatic ones. Clickable chat links: |Haddon:<type>:<data>|h…|h, the
+-- click arrives through EventRegistry "SetItemRef" (hooksecurefunc on old clients).
+local LINK_TYPE = "LiebeGruesseLFG"
+local posts, postId = {}, 0
+
+local function showLocally(text)
+    postId = postId + 1
+    posts[postId] = text
+    posts[postId - 20] = nil   -- only the last few stay clickable
+    local link = ("|cff66bbff|Haddon:%s:post:%d|h[%s]|h|r"):format(LINK_TYPE, postId, L.DG_POST_LINK)
+    ns.Print("%s |cff999999(%s)|r %s", text, L.DG_ONLY_YOU, link)
+end
+
+local function onLink(link)
+    if type(link) ~= "string" or ns.IsSecret(link) then return end
+    local id = tonumber(link:match("^addon:" .. LINK_TYPE .. ":post:(%d+)"))
+    local text = id and posts[id]
+    if not text then return end
+    posts[id] = nil   -- each answer is posted once
+    -- inside the click: the game lets this line through
+    if ns.SendChat(text, "GUILD") then dbg("posted after your click: %s", text) end
+end
+if EventRegistry and EventRegistry.RegisterCallback then
+    EventRegistry:RegisterCallback("SetItemRef", function(_, link) ns.Safe(onLink, link) end, Dungeons)
+elseif hooksecurefunc and SetItemRef then
+    hooksecurefunc("SetItemRef", function(link) ns.Safe(onLink, link) end)
+end
 
 -- the election
 local ASK_REPEAT = 30
