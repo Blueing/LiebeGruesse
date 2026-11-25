@@ -72,6 +72,23 @@ Guide.LIST = {
       shared = "Only your own events. Entries of others are checked before they are stored.",
       cmds = { "/lg feed", "/lg test feed", "/lg test toast" } },
 
+    { key = "dungeons", section = "guild", icon = "compass", name = "Dungeon interest", page = "dungeons", module = "dungeons",
+      who = { "Everyone" }, test = "test lfg",
+      sum = "Mark the dungeons you want to run – the guild sees who wants what and can whisper or invite you, no asking in guild chat.",
+      steps = {
+          { "Mark a dungeon", "My interest › switch it on. Your main role is guessed from your talents – change it if you like." },
+          { "Roles, note, items", "Off spec roles, a short note and up to six items you hope for (drop or shift-click them)." },
+          { "See who wants to go", "Who wants to go › pick a dungeon: players with role, items and note – online first." },
+          { "Get the group together", "Click a player to whisper (the text is prepared, not sent), right-click to invite." },
+      },
+      where = { { "page", "Page", "Guild › Dungeons" }, { "chat", "Command", "/lg lfg [dungeon], e.g. /lg lfg scholo" } },
+      tips = { "Marks run out after 14 days (7 or 30 under My interest) – “Renew” keeps them.",
+          "A yellow dot at an item: someone else in this dungeon wants it too.",
+          "Items you get (bags or worn) leave your list by themselves.",
+          "“Fits my level” and “Online only” narrow the lists." },
+      shared = "Your marks (dungeon, roles, note, item ids) – to guild members with the addon, when they change. Missed changes are synced at login.",
+      cmds = { "/lg lfg", "/lg test lfg" } },
+
     { key = "community", section = "guild", icon = "crown", name = "Community", page = "community", module = "community",
       who = { "Everyone" }, test = "test boards",
       sum = "Pin board, leaderboards, quote of the week and badges – the fun side of the guild.",

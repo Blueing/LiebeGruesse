@@ -57,6 +57,7 @@ Modules\LootCouncil\Page.lua
 Modules\LootCouncil\Companion.lua
 Modules\TradeTimers.lua
 Modules\Attune.lua
+Modules\Dungeons.lua
 Modules\Blessings\Blessings.lua
 Modules\Blessings\Bar.lua
 Modules\Blessings\Page.lua

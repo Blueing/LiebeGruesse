@@ -91,6 +91,8 @@ local GROUPS = {
           run = function() ns.LifeStats.Inspect("target") end },
         { cmd = "stats", desc = "Statistics: life statistics, guild, addon records",
           run = function() ns.Window.Show("stats") end },
+        { cmd = "lfg", args = "[dungeon]", desc = "Dungeon interest: who wants which dungeon (e.g. /lg lfg strat ud)",
+          run = function(rest) ns.Dungeons.Open(rest) end, aliases = { "dungeons", "dungeon" } },
     } },
     { key = "lc", title = "Loot Council", module = "council", commands = {
         { cmd = "lc", desc = "Open / close the council window",
@@ -235,6 +237,8 @@ local GROUPS = {
           run = function() ns.Test.Compare() end },
         { cmd = "test attune", desc = "Prints which attunements and keys your addon reads for you and opens the page",
           run = function() ns.Attune.Test() end },
+        { cmd = "test lfg", desc = "Dungeon interest with made-up members, roles and overlapping items (3 min, nothing sent or stored)",
+          run = function() ns.Dungeons.Test() end },
         { cmd = "test search", args = "[text]", desc = "Opens the search with a sample text (default: \"blessing\")",
           run = function(rest) ns.Window.OpenSearch((rest or "") ~= "" and rest or "blessing") end },
         { cmd = "test role", desc = "Why your group role is (not) set automatically (nothing is changed)",

@@ -10,6 +10,7 @@ local MODULES = {
     { key = "community", icon = "crown", page = "community" },
     { key = "professions", icon = "scroll-text", page = "professions" },
     { key = "feed", icon = "newspaper", page = "feed" },
+    { key = "dungeons", icon = "compass", page = "dungeons" },
     { key = "stats", icon = "badge-check", page = "stats" },
     { key = "greet", icon = "message-circle" },
 }

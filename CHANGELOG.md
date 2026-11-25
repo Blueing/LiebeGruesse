@@ -2,6 +2,14 @@
 
 All notable changes to Liebe Grüße – Guild Tools. Newest first.
 
+## [Unreleased]
+
+- feat(dungeons): new page Dungeons – mark the dungeons you want to run with main role, off spec, a note and up to six wanted items (/lg lfg)
+- feat(dungeons): "Who wants to go" lists everyone per dungeon with role, items and note; online only, fits my level; click whispers (text prepared, not sent), right-click invites
+- feat(dungeons): wanted items show overlaps with other players of the same dungeon; items you get leave your list by themselves
+- feat(dungeons): marks run out after 14 days (7/30 selectable), "Renew" keeps them; synced to the guild on change and at login
+- feat(test): /lg test lfg with made-up members
+
 ## [1.0.68] – 2026-11-25
 
 - feat(professions): new tab "Shopping list" – recipes with −/+ and remove, all materials with need, owned, price and total, vendor materials marked; buttons for Auctionator, TSM search, copy and empty

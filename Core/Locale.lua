@@ -878,4 +878,41 @@ local enUS11 = {
 }
 for k, v in pairs(enUS11) do enUS[k] = v end
 
+-- Dungeon interest (Modules/Dungeons.lua)
+local enUS12 = {
+    PAGE_DUNGEONS = "Dungeons", MOD_DUNGEONS_TEXT = "Mark the dungeons you want to run – the guild sees who wants what.",
+    DG_TAB_FIND = "Who wants to go", DG_TAB_MINE = "My interest", DG_SEARCH = "Search dungeon, player or item…",
+    DG_TANK = "Tank", DG_HEAL = "Healer", DG_DPS = "DPS",
+    DG_ONLINE_TIP = "Only players who are online right now.",
+    DG_FITS = "Fits my level", DG_FITS_TIP = "Only dungeons that suit your character's level.",
+    DG_COL_DUNGEON = "Dungeon", DG_COL_WANT = "Want", DG_COL_ROLE = "Role", DG_COL_ITEMS = "Wanted items",
+    DG_COL_NOTE = "Note", DG_COL_SINCE = "Marked", DG_COL_EXPIRES = "Expires",
+    DG_TIP_LEVEL = "Level %s", DG_TIP_COUNT = "%d interested, %d online", DG_LEVEL_RANGE = "Level %s",
+    DG_MARK = "I want to go", DG_UNMARK = "Not interested", DG_EDIT = "Edit",
+    DG_WHISPER = "Whisper", DG_INVITE = "Invite to group", DG_ARMORY = "Open in roster",
+    DG_WHISPER_TEXT = "Hi! You marked %s in Liebe Grüße – want to go? ",
+    DG_TIP_MAIN = "Main role: %s", DG_TIP_OFF = "Off spec: %s",
+    DG_CLASH = "also wanted by others", DG_ALSO_WANTS = "also: %s", DG_CLASHES = "%d wanted item(s) overlap",
+    DG_ROW_TIP = "Click: whisper · Right-click: invite, roster", DG_ROW_TIP_ME = "That is you – edit it under “My interest”.",
+    DG_TEST = "test", DG_TEST_ROW = "That is a test player – nothing is sent.",
+    DG_TEST_START = "Dungeon interest with made-up members for 3 minutes (only for you, nothing is sent or stored).",
+    DG_EMPTY = "Nobody has marked this dungeon yet.", DG_EMPTY_ONLINE = "Nobody online wants this dungeon right now.",
+    DG_EMPTY_HINT = "Be the first: “I want to go” at the top right.",
+    DG_TOGGLE_TIP = "Interested in this dungeon",
+    DG_RENEW_ALL = "Renew all", DG_RENEW_ALL_TIP = "All your marks count again from today.",
+    DG_KEEP_FOR = "New marks last", DG_DAYS = "%d days",
+    DG_EDIT_HINT = "You have not marked this dungeon. Switch it on in the list or here – then pick your roles, a note and the items you hope for.",
+    DG_MAIN_ROLE = "Main role", DG_OFF_SPEC = "Off spec", DG_OFF_NONE = "Your class has no other role.",
+    DG_NOTE_HINT = "e.g. need the quest, only full clears…",
+    DG_ADD_ITEM = "Add item", DG_ADD_WAIT = "Shift-click item…",
+    DG_ADD_HINT = "Drop an item on the button – or click it, then shift-click an item in your bags, chat or a loot addon. Right-click an icon removes it.",
+    DG_ITEM_REMOVE_TIP = "Right-click: remove from your list",
+    DG_ITEMS_FULL = "At most %d wanted items per dungeon.",
+    DG_GOT_ITEM = "You have %s now – removed from your wanted items for %s.",
+    DG_RENEW = "Renew", DG_REMOVE = "Remove mark", DG_SINCE = "marked %s",
+    DG_IN_DAYS = "%d d left", DG_IN_HOURS = "%d h left",
+    DG_UNKNOWN = "No dungeon matches “%s”.",
+}
+for k, v in pairs(enUS12) do enUS[k] = v end
+
 for k, v in pairs(enUS) do L[k] = v end
