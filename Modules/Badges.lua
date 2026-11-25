@@ -17,7 +17,6 @@ Badges.LIST = {
     { id = "failpull", icon = "swords", stat = "failpull", tiers = { 3, 10, 25 } },
     { id = "oops", icon = "move", stat = "mispull", tiers = { 3, 10, 25 } },
     { id = "pepega", icon = "x", stat = "death", tiers = { 5, 20, 50 } },
-    { id = "gravity", icon = "minus", stat = "fall", tiers = { 3, 10, 25 } },
     { id = "coffee", icon = "timer", stat = "afk", tiers = { 5, 20, 50 } },
     { id = "kangaroo", icon = "sparkles", stat = "jumpNight", tiers = { 200, 500, 1000 } },
     { id = "moneypit", icon = "hammer", stat = "repairGold", tiers = { 100, 500, 2000 }, unit = "g" },

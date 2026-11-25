@@ -64,7 +64,7 @@ function Greet.Trigger(name)
             pending[g.key] = nil
             if Greet.Done(g.key) or not enabled() then return end
             markDone(g.key)
-            ns.SendChat(g.text, "GUILD")
+            if ns.SendChat(g.text, "GUILD") then ns.MarkAutoSent() end
         end)
     end)
 end

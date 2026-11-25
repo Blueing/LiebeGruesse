@@ -143,6 +143,11 @@ function ns.Debounce(key, seconds, fn)
     end)
 end
 
+function ns.CancelDebounce(key)
+    local old = debounced[key]
+    if old then old:Cancel(); debounced[key] = nil end
+end
+
 ---------------------------------------------------------------------------
 -- Restrictions (combat, encounters, chat lockdown)
 ---------------------------------------------------------------------------
@@ -155,16 +160,23 @@ function ns.EncounterInProgress()
     return ns.Call(IsEncounterInProgress) == true
 end
 
-local COMM_RESTRICTIONS = { "Encounter", "ChallengeMode", "PvPMatch", "Chat" }
-function ns.CommsRestricted()
+-- every restriction the client knows counts (new ones too), not only a fixed list
+function ns.Restrictions()
+    local out = {}
     local api, types = C_RestrictedActions, Enum and Enum.AddOnRestrictionType
-    if api and api.IsAddOnRestrictionActive and types then
-        for _, name in ipairs(COMM_RESTRICTIONS) do
-            local kind = types[name]
-            if kind ~= nil and ns.Call(api.IsAddOnRestrictionActive, kind) == true then
-                return true, name:lower()
+    if api and api.IsAddOnRestrictionActive and type(types) == "table" then
+        for name, kind in pairs(types) do
+            if type(kind) == "number" then
+                out[#out + 1] = { name = tostring(name), on = ns.Call(api.IsAddOnRestrictionActive, kind) == true }
             end
         end
+        table.sort(out, function(a, b) return a.name < b.name end)
+    end
+    return out
+end
+function ns.CommsRestricted()
+    for _, r in ipairs(ns.Restrictions()) do
+        if r.on then return true, r.name:lower() end
     end
     if ns.EncounterInProgress() then return true, "encounter" end
     if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and ns.Call(C_ChatInfo.InChatMessagingLockdown) == true then
@@ -180,7 +192,7 @@ function ns.SendChat(text, chatType, target)
         ns.Print(ns.L.CD_CHAT_LOCKED)
         return false
     end
-    local send = SendChatMessage or (C_ChatInfo and C_ChatInfo.SendChatMessage)
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
     if not send then return false end
     local ok, err = pcall(send, text, chatType, nil, target)
     if not ok then ns.Print("%s (%s)", ns.L.CHAT_FAILED, tostring(err)) end
@@ -208,7 +220,44 @@ ns.On("ENCOUNTER_END", function() ns.After(1, flushAfterCombat) end)
 -- Automatic chat messages (craft answers, greetings) must never be sent while the
 -- game could block them: in combat (also the plain "in combat" flag, which the
 -- lockdown check misses), during encounters or a chat lockdown.
+-- the game blocked an action of this addon (e.g. a chat line it did not allow):
+-- automatic chat pauses for two minutes instead of failing again
+local function onBlocked(event, addon, fn)
+    if addon ~= "LiebeGruesse" then return end
+    if not ns.blockedAt then ns.Print(ns.L.CHAT_BLOCKED_ONCE) end
+    ns.blockedAt = GetTime()
+    ns.blockCount = (ns.blockCount or 0) + 1
+    ns.lastBlock = { t = time and time() or 0, fn = tostring(fn or "?"), event = event,
+        combat = UnitAffectingCombat and ns.Call(UnitAffectingCombat, "player") == true, lockdown = InCombatLockdown() }
+end
+ns.On("ADDON_ACTION_BLOCKED", onBlocked)
+ns.On("ADDON_ACTION_FORBIDDEN", onBlocked)
+
+-- /lg test chat: why automatic chat lines may (not) go out (nothing is sent)
+function ns.ChatReport()
+    local L = ns.L
+    local function yes(v) return v and "|cffff6060yes|r" or "|cff60d060no|r" end
+    ns.Print(L.TEST_TAG .. " " .. L.CHAT_REPORT)
+    print("  in combat (lockdown / flag): " .. yes(InCombatLockdown()) .. " / " .. yes(UnitAffectingCombat and ns.Call(UnitAffectingCombat, "player") == true))
+    print("  encounter: " .. yes(ns.EncounterInProgress()) .. "   chat lockdown: "
+        .. yes(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and ns.Call(C_ChatInfo.InChatMessagingLockdown) == true))
+    local r = ns.Restrictions()
+    if #r == 0 then print("  addon restrictions: (client has none)") end
+    for _, x in ipairs(r) do print(("  restriction %s: %s"):format(x.name, yes(x.on))) end
+    print("  sends with: " .. ((C_ChatInfo and C_ChatInfo.SendChatMessage) and "C_ChatInfo.SendChatMessage" or "SendChatMessage"))
+    local b = ns.lastBlock
+    if b then
+        print(("  blocked %d× this session, last %s: %s (%s) – combat flag %s, lockdown %s"):format(ns.blockCount or 1,
+            date and date("%H:%M:%S", b.t) or "?", b.fn, b.event, yes(b.combat), yes(b.lockdown)))
+    else
+        print("  blocked this session: " .. yes(false))
+    end
+    print(("  automatic lines sent: %d in the last minute, %d in 5 minutes"):format(ns.AutoSentSince(60), ns.AutoSentSince(300)))
+    local blocked, why = ns.ChatBlocked()
+    print("  automatic chat now: " .. (blocked and ("|cffff6060waits|r (" .. tostring(why) .. ")") or "|cff60d060allowed|r"))
+end
 function ns.ChatBlocked()
+    if ns.blockedAt and GetTime() - ns.blockedAt < 120 then return true, "blocked" end
     if InCombatLockdown() then return true, "combat" end
     if UnitAffectingCombat and ns.Call(UnitAffectingCombat, "player") == true then return true, "combat" end
     return ns.CommsRestricted()
@@ -239,7 +288,21 @@ function ns.AutoChat(key, fn)
 end
 -- Sends an automatic chat message through ns.AutoChat.
 function ns.SendChatAuto(key, text, chatType, target)
-    ns.AutoChat(key, function() ns.SendChat(text, chatType, target) end)
+    ns.AutoChat(key, function() if ns.SendChat(text, chatType, target) then ns.MarkAutoSent() end end)
+end
+
+-- Forever allows an addon only a few automatic chat lines in a short time (more
+-- are blocked): every automatic line is counted, so busy clients leave the next
+-- "!lg" answer to the others
+local autoSent = {}
+function ns.MarkAutoSent()
+    autoSent[#autoSent + 1] = GetTime()
+    while #autoSent > 20 do table.remove(autoSent, 1) end
+end
+function ns.AutoSentSince(seconds)
+    local n, now = 0, GetTime()
+    for _, t in ipairs(autoSent) do if now - t <= seconds then n = n + 1 end end
+    return n
 end
 ns.On("PLAYER_REGEN_ENABLED", function() ns.After(0.6, function() if next(autoChat) then flushAutoChat() end end) end)
 

@@ -63,9 +63,8 @@ ns.On("PLAYER_DEAD", function()
     wipe(mirror)
     if kind == "guard" then
         if ns.CommunityDaily then ns.CommunityDaily.Add("guard") end
-    elseif kind and not (inside == true and (itype == "raid" or itype == "party") and kind == "fall") then
-        Fun.RecordDeath(kind)
     end
+    -- deaths by falling / drowning are no longer recorded (board removed, Ben 1.0.77)
 end)
 
 ---------------------------------------------------------------------------
@@ -209,7 +208,6 @@ function Fun.Test()
     local now = ns.Now()
     local list = {}
     local function add(k, who, d) list[#list + 1] = { id = "test:" .. #list, t = now - #list * 60, k = k, who = who, d = d } end
-    for i = 1, 9 do add("fall", pick(i % 3 + 1), { c = ({ "fall", "drown", "lava" })[i % 3 + 1] }) end
     for i = 1, 8 do add("repair", pick(i), { c = 150000 + i * 83000 }) end
     for i = 1, #keys do add("session", pick(i), { s = 3600 * (2 + i) + 17 * 60 }) end
     for i = 1, 7 do add("greet1", pick(i % 2 + 1), { g = "salty" }) end

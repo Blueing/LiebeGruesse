@@ -709,39 +709,34 @@ end
 
 local function answersOn() return settings().answer ~= false and ns.Database.Settings().modules.dungeons ~= false end
 
--- blocked chat lines, the local answer and its post link: Core/AutoPost.lua
-function Dungeons.CannotSend() return ns.AutoPost.Blocked("lfg") end
-function Dungeons.ResetSendBlock()
-    ns.AutoPost.Reset()
-    ns.Print(L.AUTOPOST_RETRY)
-end
-
-local function sendAnswer(text, channel, target)
-    dbg("sending to %s: %s", channel, text)
-    ns.AutoPost.Send("lfg", text, channel, target)
+-- Delivery like "!lg" since 1.0.80 (CraftQuery.Deliver): an asker with the addon
+-- gets the answer through the addon channel – every addon user sees it in the
+-- chat window (guild colour, "[Post]" link, /lg post) and no automatic chat line
+-- is needed; players without the addon get a guild chat line.
+local function deliver(text, asked, asker)
+    local Craft = ns.CraftQuery
+    dbg("answering: %s", text)
+    if Craft and Craft.Deliver then Craft.Deliver(text, asked, asker)
+    else ns.SendChatAuto("lfg-answer-GUILD", "[LG] " .. text, "GUILD") end
 end
 
 -- the election
 local ASK_REPEAT = 30
+local BACKUP_WAIT = 5     -- no answer this long after a question: one more round
 local askRecent, askPending, askClaims = {}, {}, {}
+local lastAnswer = -1     -- GetTime() of the last answer seen (guild chat line or addon answer)
 
-local function onAsk(text, sender)
-    local q = parseAsk(text)
-    if not q then return end
-    local key = normalize(q):match("^%s*(.-)%s*$")
-    if key == "" then key = "*" end
-    -- our own question: shown to us when no answer shows up in guild chat
-    if Names.IsMe(sender) then ns.AutoPost.WatchOwn(function() return "[LG] " .. replyFor(q) end) end
-    if not answersOn() then dbg("answers are switched off here"); return end
-    if Dungeons.CannotSend() then dbg("not taking part: the game blocked this client's chat lines lately"); return end
-    if askRecent[key] and GetTime() - askRecent[key] < ASK_REPEAT then
-        dbg("not again: \"%s\" was answered %d s ago", key, GetTime() - askRecent[key]); return
-    end
+local function elect(key, q, asked, asker)
     if askPending[key] then return end
+    -- the game blocked a line of this client lately: the others answer
+    if ns.blockedAt and GetTime() - ns.blockedAt < 120 then dbg("not taking part: the game blocked this client lately"); return end
     local token = math.random(1, 100000)
     if ns.ChatBlocked and ns.ChatBlocked() then token = token + 1000000 end
-    local delay = 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.3
-    dbg("heard \"%s\" – my claim %d in %.2f s", text, token, delay)
+    -- sent automatic lines lately: the game may block the next one – another client first
+    local sent = ns.AutoSentSince and ns.AutoSentSince(60) or 0
+    if sent > 0 then token = token + math.min(sent, 3) * 300000 end
+    local delay = 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.15
+    dbg("question \"%s\" – my claim %d in %.2f s", key, token, delay)
     local p = { token = token }
     askPending[key] = p
     p.timer = C_Timer.NewTimer(delay, function()
@@ -753,10 +748,38 @@ local function onAsk(text, sender)
             askPending[key] = nil
             if askClaims[key] and askClaims[key] < p.token then dbg("lost after claiming"); return end
             askRecent[key] = GetTime()
-            sendAnswer("[LG] " .. replyFor(q), "GUILD")
+            deliver(replyFor(q), asked, asker)
         end)
     end)
 end
+
+local function onAsk(text, sender)
+    local q = parseAsk(text)
+    if not q then return end
+    if not answersOn() then dbg("answers are switched off here"); return end
+    local key = normalize(q):match("^%s*(.-)%s*$")
+    if key == "" then key = "*" end
+    if askRecent[key] and GetTime() - askRecent[key] < ASK_REPEAT then
+        dbg("not again: \"%s\" was answered %d s ago", key, GetTime() - askRecent[key]); return
+    end
+    if askPending[key] then return end
+    local asked, asker = GetTime(), Names.Key(sender)
+    elect(key, q, asked, asker)
+    -- the winner did not answer (the game blocked it, combat, offline): one more round without it
+    C_Timer.After(BACKUP_WAIT, function()
+        if lastAnswer >= asked then return end
+        dbg("no answer after %d s – second round", BACKUP_WAIT)
+        elect(key .. "#2", q, asked, asker)
+    end)
+end
+
+-- every answer shown in the chat window (addon answers of !lg and !lfg) counts as answered
+ns.On("LG_READY", function()
+    local Craft = ns.CraftQuery
+    if Craft and Craft.ShowAnswer and hooksecurefunc then
+        hooksecurefunc(Craft, "ShowAnswer", function() lastAnswer = GetTime() end)
+    end
+end)
 
 Comm.Register("DE", function(data, sender)
     if type(data.q) ~= "string" or type(data.n) ~= "number" then return end
@@ -773,15 +796,21 @@ end)
 
 ns.On("CHAT_MSG_GUILD", function(_, text, sender)
     if ns.IsSecret(text) or ns.IsSecret(sender) or type(text) ~= "string" or type(sender) ~= "string" then return end
+    if text:find("^%[LG%] ") then lastAnswer = GetTime(); return end
     onAsk(text, sender)
 end)
 
--- whispered "!lfg …" is answered directly
+-- whispered "!lfg …": an addon user gets an addon whisper (no chat line), others a whisper
 ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
     if ns.IsSecret(text) or ns.IsSecret(sender) or type(text) ~= "string" or type(sender) ~= "string" then return end
     local q = parseAsk(text)
-    if not q or not answersOn() or Dungeons.CannotSend() then return end
-    sendAnswer("[LG] " .. replyFor(q), "WHISPER", sender)
+    if not q or not answersOn() then return end
+    local answer, key, Craft = replyFor(q), Names.Key(sender), ns.CraftQuery
+    if key and Craft and Craft.HasAddonAnswers and Craft.HasAddonAnswers(key) and not Names.Same(key, Names.Me()) then
+        Comm.Send("QA", { t = answer }, "WHISPER", { target = sender, priority = "alert" })
+        return
+    end
+    ns.SendChatAuto("lfg-answer-" .. sender, "[LG] " .. answer, "WHISPER", sender)
 end)
 
 -- /lg test lfgask [dungeon]: the "!lfg" answer, only for you, and whether this client would answer
@@ -791,9 +820,7 @@ function Dungeons.TestAsk(text)
     local yes, no = Theme.HexColor("good", L.YES), Theme.HexColor("bad", L.NO)
     local blocked, why = false, nil
     if ns.ChatBlocked then blocked, why = ns.ChatBlocked() end
-    print("  " .. L.DG_ASK_STATUS:format(answersOn() and yes or no, Dungeons.CannotSend() and no or yes,
-        blocked and (no .. " (" .. tostring(why or "") .. ")") or yes))
-    if Dungeons.CannotSend() then print("  " .. Theme.HexColor("warn", L.DG_ASK_SEND_BLOCKED)) end
+    print("  " .. L.DG_ASK_STATUS:format(answersOn() and yes or no, blocked and (no .. " (" .. tostring(why or "") .. ")") or yes))
 end
 
 ---------------------------------------------------------------------------

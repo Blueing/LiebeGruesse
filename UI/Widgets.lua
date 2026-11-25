@@ -430,11 +430,16 @@ end
 ---------------------------------------------------------------------------
 -- Search menu: dropdown with a search field, group headings and rows with
 -- an icon, a tag and a value on the right. Arrow keys + Enter, Esc closes.
---   UI.SearchMenu(anchor, { width, placeholder, text, point = { point, relPoint, x, y }, build = fn(query) -> entries, onPick = fn(value) })
---   entry: { head = "TITLE" } or { value, text, right, tag, setIcon = fn(tex), border = { r, g, b } }
+--   UI.SearchMenu(anchor, { width, placeholder, text, point = { point, relPoint, x, y }, twoLine,
+--                           build = fn(query) -> entries, onPick = fn(value) })
+--   entry: { head = "TITLE" } or { value, text, sub, prefix, right, tag, setIcon = fn(tex), border = { r, g, b },
+--            children = { entry, … } }
+--   twoLine: rows with a second line (sub: breadcrumb "Page › Card"); prefix in
+--   accent before the text ("Section:"); children: the same label in several
+--   places – the row opens / closes (+ / −), the children are picked.
 ---------------------------------------------------------------------------
 local search
-local SEARCH_ROWS, SEARCH_ROW_H = 12, 26
+local SEARCH_ROWS, SEARCH_ROW_H, SEARCH_ROW_H2, SEARCH_HEAD_H, SEARCH_MAX_H = 12, 26, 38, 24, 456
 local function getSearch()
     if search then return search end
     local s = UI.Panel(UIParent, "panel", "border")
@@ -468,27 +473,69 @@ end
 function UI.SearchMenu(anchor, opts)
     local s = getSearch()
     local width = opts.width or 330
-    s.opts, s.offset, s.sel = opts, 0, nil
+    local twoLine = opts.twoLine
+    s.opts, s.offset, s.sel, s.open = opts, 0, nil, {}
     s:SetWidth(width)
     if s.edit.placeholder then s.edit.placeholder:SetText(opts.placeholder or "") end
     s.hint:SetText(opts.hint or "")
 
     local function pickable(i) local e = s.entries[i]; return e and not e.head end
-    local function draw()
-        local visible = math.min(#s.entries, SEARCH_ROWS)
+    local function rowH(e)
+        if not e or e.head then return SEARCH_HEAD_H end
+        return (twoLine and e.sub) and SEARCH_ROW_H2 or SEARCH_ROW_H
+    end
+    -- entries from the offset on that fit into the list height
+    local function fitting(from)
+        local h, n = 0, 0
+        local maxH = twoLine and SEARCH_MAX_H or SEARCH_ROWS * SEARCH_ROW_H
+        for i = from, #s.entries do
+            local eh = rowH(s.entries[i])
+            if h + eh > maxH and n > 0 then break end
+            h, n = h + eh, n + 1
+        end
+        return n, h
+    end
+    -- groups that are open show their children right below
+    local function flatten()
+        local out = {}
+        for _, e in ipairs(s.raw or {}) do
+            out[#out + 1] = e
+            if e.children and s.open[e] then
+                for _, c in ipairs(e.children) do c.child = true; out[#out + 1] = c end
+            end
+        end
+        s.entries = out
+    end
+    local draw
+    local function choose(e)
+        if not e or e.head then return end
+        if e.children then
+            s.open[e] = not s.open[e]
+            flatten()
+            for i, x in ipairs(s.entries) do if x == e then s.sel = i end end
+            draw()
+            return
+        end
+        s:Hide()
+        ns.Safe(opts.onPick, e.value)
+    end
+    draw = function()
+        local visible, listH = fitting(s.offset + 1)
+        local y = -42
         for i = 1, visible do
             local e = s.entries[i + s.offset]
             local r = s.rows[i]
             if not r then
                 r = CreateFrame("Button", nil, s)
-                r:SetHeight(SEARCH_ROW_H)
                 r.hl = UI.Fill(r, "hover", "HIGHLIGHT"); r.hl:SetAllPoints()
                 r.sel = UI.Fill(r, "selected", "BORDER"); r.sel:SetAllPoints()
                 r.bar = UI.Fill(r, "accent", "ARTWORK"); r.bar:SetPoint("TOPLEFT"); r.bar:SetPoint("BOTTOMLEFT"); r.bar:SetWidth(2)
-                r.border = r:CreateTexture(nil, "ARTWORK"); r.border:SetTexture(Theme.WHITE); r.border:SetSize(18, 18); r.border:SetPoint("LEFT", 10, 0)
+                r.guide = UI.Fill(r, "borderDim", "ARTWORK"); r.guide:SetWidth(1)
+                r.guide:SetPoint("TOPLEFT", 19, 0); r.guide:SetPoint("BOTTOMLEFT", 19, 0)
+                r.border = r:CreateTexture(nil, "ARTWORK"); r.border:SetTexture(Theme.WHITE); r.border:SetSize(18, 18)
                 r.icon = r:CreateTexture(nil, "OVERLAY"); r.icon:SetSize(16, 16); r.icon:SetPoint("CENTER", r.border, "CENTER")
                 r.text = UI.Text(r, 13, "text")
-                r.text:SetPoint("LEFT", r.border, "RIGHT", 8, 0)
+                r.sub = UI.Text(r, 11, "muted")
                 r.right = UI.Text(r, 13, "text", "RIGHT", nil, true)
                 r.right:SetPoint("RIGHT", -10, 0)
                 r.tag = UI.Text(r, 10, "bronze", "RIGHT", nil, true)
@@ -497,9 +544,12 @@ function UI.SearchMenu(anchor, opts)
                 r.head:SetPoint("BOTTOMLEFT", 10, 3)
                 s.rows[i] = r
             end
+            local h = rowH(e)
+            r:SetHeight(h)
             r:ClearAllPoints()
-            r:SetPoint("TOPLEFT", 1, -42 - (i - 1) * SEARCH_ROW_H)
-            r:SetPoint("TOPRIGHT", -1, -42 - (i - 1) * SEARCH_ROW_H)
+            r:SetPoint("TOPLEFT", 1, y)
+            r:SetPoint("TOPRIGHT", -1, y)
+            y = y - h
             local isHead = e and e.head
             r.head:SetShown(isHead and true or false)
             r.head:SetText(isHead and ns.Upper(e.head) or "")
@@ -507,28 +557,53 @@ function UI.SearchMenu(anchor, opts)
             r.hl:SetShown(e ~= nil and not isHead)
             local selected = (i + s.offset) == s.sel
             r.sel:SetShown(selected); r.bar:SetShown(selected)
+            local child = e and e.child and true or false
+            r.guide:SetShown(child)
             if e and not isHead then
-                r.text:SetText(ns.Highlight(e.text or "", s.query or "", e.hlRole))
+                local indent = child and 18 or 0
+                local hasSub = twoLine and e.sub ~= nil
+                r.border:ClearAllPoints()
+                r.border:SetPoint("LEFT", 10 + indent, 0)
+                local x = (e.setIcon or e.border) and (10 + indent + 18 + 8) or (10 + indent)
+                r.text:ClearAllPoints(); r.sub:ClearAllPoints()
+                if hasSub then
+                    r.text:SetPoint("TOPLEFT", x, -5)
+                    r.sub:SetPoint("TOPLEFT", x, -21)
+                else
+                    r.text:SetPoint("LEFT", x, 0)
+                end
+                local title = ns.Highlight(e.text or "", s.query or "", e.hlRole)
+                if e.prefix then title = Theme.HexColor("accent", e.prefix) .. " " .. title end
+                if e.children then title = title .. "  " .. Theme.HexColor("accent", s.open[e] and "−" or "+") end
+                r.text:SetText(title)
+                r.sub:SetShown(hasSub)
+                r.sub:SetText(hasSub and e.sub or "")
                 r.right:SetText(e.right or "")
                 r.tag:SetText(e.tag and ns.Upper(e.tag) or "")
-                r.text:SetWidth(math.max(40, width - 46 - 10 - (r.right:GetStringWidth() or 0) - (e.tag and (r.tag:GetStringWidth() or 0) + 8 or 0) - 16))
+                local free = width - x - 10 - (r.right:GetStringWidth() or 0) - (e.tag and (r.tag:GetStringWidth() or 0) + 8 or 0) - 16
+                r.text:SetWidth(math.max(40, free))
+                r.sub:SetWidth(math.max(40, width - x - 16))
                 if e.setIcon then e.setIcon(r.icon) else r.icon:SetTexture(nil) end
                 local b = e.border
                 r.border:SetShown(b ~= nil)
                 if b then r.border:SetVertexColor(b[1], b[2], b[3], 1) end
+            else
+                r.sub:Hide()
             end
-            r:SetScript("OnClick", function() if e and not isHead then s:Hide(); ns.Safe(opts.onPick, e.value) end end)
+            r:SetScript("OnClick", function() choose(e) end)
             r:Show()
         end
         for i = visible + 1, #s.rows do s.rows[i]:Hide() end
         local hintH = (opts.hint and opts.hint ~= "") and 22 or 6
-        s:SetHeight(42 + math.max(1, visible) * SEARCH_ROW_H + hintH)
+        s:SetHeight(42 + math.max(SEARCH_ROW_H, listH) + hintH)
     end
     local function rebuild(text)
         s.query = text or ""
         local ok, res = pcall(opts.build, (text or ""):lower())
         if not ok then ns.Safe(error, res) end
-        s.entries = (ok and type(res) == "table") and res or {}
+        s.raw = (ok and type(res) == "table") and res or {}
+        s.open = {}
+        flatten()
         s.offset, s.sel = 0, nil
         for i = 1, #s.entries do if pickable(i) then s.sel = i; break end end
         draw()
@@ -540,18 +615,19 @@ function UI.SearchMenu(anchor, opts)
         if i < 1 or i > #s.entries then return end
         s.sel = i
         if s.sel <= s.offset then s.offset = math.max(0, s.sel - 2) end
-        if s.sel > s.offset + SEARCH_ROWS then s.offset = s.sel - SEARCH_ROWS end
+        while s.sel > s.offset + fitting(s.offset + 1) do s.offset = s.offset + 1 end
         draw()
     end
     s.edit.onChange = function(_, text) rebuild(text) end
     s.edit:SetScript("OnArrowPressed", function(_, key) if key == "UP" then move(-1) elseif key == "DOWN" then move(1) end end)
     s.edit:SetScript("OnEnterPressed", function()
         local e = s.sel and s.entries[s.sel]
+        if e and e.children then choose(e); return end
         s:Hide()
         if e and not e.head then ns.Safe(opts.onPick, e.value) end
     end)
     s:SetScript("OnMouseWheel", function(_, delta)
-        s.offset = math.max(0, math.min(math.max(0, #s.entries - SEARCH_ROWS), s.offset - delta * 3))
+        s.offset = math.max(0, math.min(math.max(0, #s.entries - 3), s.offset - delta * 3))
         draw()
     end)
     s.edit:SetText(opts.text or "")

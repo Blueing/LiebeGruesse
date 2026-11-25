@@ -12,10 +12,90 @@ All notable changes to Liebe Grüße – Guild Tools. Newest first.
 - feat(dungeons): the nine new Forever dungeons are in the list too (Hall of Thanes, Ruins of Lordaeron, Excavation Site: Wetlands, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold, Shaper's Terrace), sorted by level and tagged "Forever"
 - feat(dungeons): asking in guild chat ("LFG Strat UD", "wer kommt mit scholo?", "LF1M heal BRD", common short names in English and German) puts the player on the list for 2 hours – also without the addon (tag "chat", role unknown, the message as note); trade messages are ignored; switch under My interest
 - feat(dungeons): your own chat message makes a short mark of yours that is synced; marking or editing it turns it into a normal mark
-- feat(dungeons): "!lfg <dungeon>" in guild chat or as a whisper ("!lfg ubrs", "!lfg strat ud", also short names like "!lfg zf") – exactly one addon user answers who wants to run it, online first with role; "!lfg" alone lists the most wanted dungeons; whoever asks counts as looking for a group too (2 h) and is part of the answer; own election (message kind DE), !lg and the crafting answers are untouched; switch "Answer !lfg" under My interest
-- feat(dungeons): when the game blocks a client's automatic chat line (ADDON_ACTION_BLOCKED), that client stops answering !lfg for 3 days so another member answers; your own question is shown to you in your chat window when no answer shows up in guild chat, with a link "[Post in guild chat]" – one click posts it (a click is allowed where automatic lines are blocked)
-- fix(crafts): the same for !lg – a client whose chat lines the game blocks lets the others answer for 3 days; your own !lg question is shown to you with "[Post in guild chat]" when no answer shows up (shared code in Core/AutoPost.lua, a few lines in CraftQuery.lua)
-- feat(test): /lg test lfg with made-up members, /lg test lfgask [dungeon] shows the !lfg answer, /lg test lfgchat [text] shows what is read from a chat message, /lg test lfgdebug and /lg test chatretry
+- feat(dungeons): "!lfg <dungeon>" in guild chat or as a whisper ("!lfg ubrs", "!lfg strat ud", also short names like "!lfg zf") – exactly one addon user answers who wants to run it, online first with role; "!lfg" alone lists the most wanted dungeons; whoever asks counts as looking for a group too (2 h) and is part of the answer; own election (message kind DE); switch "Answer !lfg" under My interest
+- feat(dungeons): !lfg is answered the same way as !lg since 1.0.80 – addon users get the answer through the addon channel (chat window, guild colour, "[Post]" link, /lg post), players without the addon a guild chat line; a client that sent automatic lines lately or was blocked leaves the answer to others, and a second round follows after 5 s without an answer
+- feat(test): /lg test lfg with made-up members, /lg test lfgask [dungeon] shows the !lfg answer, /lg test lfgchat [text] shows what is read from a chat message, /lg test lfgdebug
+
+## [1.0.80] – 2026-11-25
+
+- change(craft): "!lg" from an addon user (1.0.80+) is answered through the addon channel instead of guild chat – every addon user of the guild sees the answer in the chat window (guild colour, links clickable); no automatic chat line, so the game's limit does not apply; players without the addon still get the guild chat answer
+- feat(craft): "[Post]" behind every answer in the chat window – one click posts it to guild chat (also /lg post for the last answer), each answer once
+- change(craft): whispered "!lg" from an addon user is answered by addon whisper
+
+## [1.0.79] – 2026-11-25
+
+- fix(craft): Forever limits how many automatic chat lines an addon may send in a short time – every automatic line (answers, greetings) is counted, and a client that sent one in the last minute leaves the next "!lg" answer to another client
+- feat(test): /lg test chat shows how many automatic lines were sent in the last 1 and 5 minutes
+
+## [1.0.78] – 2026-11-25
+
+- change(dungeons): page Dungeons removed again with everything that belongs to it (marks, group posts, guild chat reading, dungeon browser, /lg lfg, /lg lfm, tests, settings); its saved data is deleted at login
+
+## [1.0.77] – 2026-11-25
+
+- change(community): leaderboard "Gravity's favourites" and the badge "Gravity Tester" removed; deaths by falling or drowning are no longer recorded
+- change(craft): after a blocked chat line the client sits out "!lg" answers for 2 minutes at most (was 24 h)
+
+## [1.0.76] – 2026-11-25
+
+- change(dungeons): the dungeon browser only fills your own group – "Dungeon browser" works after "Post group", shows the players listed there (right-click: invite); a second click shows the guild only again; foreign groups from the browser are no longer listed
+- feat(dungeons): role filter tank / healer / dps next to it (main role or off spec, several at once); after a browser search it is set to your open spots
+- fix(dungeons): comments from the browser are protected text ("Kt75k") – now shown the way the game shows them; no dangling "·" after a play style without note
+- fix(craft): /lg test chat reset – answer "!lg" again right away after a block
+
+## [1.0.75] – 2026-11-25
+
+- change(dungeons): guild chat is always read again (no "Guild chat" button) – it is the guild's own chat
+- feat(dungeons): "Dungeon browser" button – searches the game's dungeon browser for the selected dungeon; listed players show in the list (tag "browser", right-click: invite), listed groups at the top
+- feat(dungeons): right-click a listed group: "Request to join" – the game's request where the client has one, otherwise a whisper to the leader with role, level and class
+- style(dungeons): groups listed in the browser show "public"
+
+## [1.0.74] – 2026-11-25
+
+- fix(craft): a client whose chat line the game blocked takes no part in "!lg" answers for 30 min – the other members' addons answer; one chat note explains it
+- fix(chat): every addon restriction the client reports counts before an automatic chat line (not only a fixed list); lines go out through C_ChatInfo.SendChatMessage when the client has it
+- feat(test): /lg test chat – combat, encounter, chat lockdown, every addon restriction and the last block (time, function, combat state)
+- fix(dungeons): the group finder search looks at every category the client offers (Ragefire Chasm and The Stockade were not found under dungeons)
+
+## [1.0.73] – 2026-11-25
+
+- fix(craft): a "!lg" question got no answer when the chosen client could not send (the game blocked its chat line, combat): after 5 s without an answer a second round picks another client; late answers are dropped when someone answered meanwhile
+- fix(chat): when the game blocks an action of the addon, automatic chat lines pause for two minutes instead of failing again; the combat restriction counts as blocked, too
+- change(dungeons): "Public" opens the game's group finder on its listing tab and names the entry to pick – the game lists groups only from its own window; the post shows "public" as soon as the listing is active, closing the post removes it
+- fix(dungeons): dungeon names of the game's group finder (Stratholme Main/Service Gate, Scarlet Graveyard/Library/Armory/Cathedral) are recognised, also in guild chat
+
+## [1.0.72] – 2026-11-25
+
+- feat(dungeons): "Public (group finder)" when posting a group – for players outside the guild to fill the last spots
+- feat(dungeons): play style (Learning, Relaxed, Competitive, Carry offered) for group posts and marks – shown in the chat line, the group rows and the player list; toasts and "fits a spot" only for matching styles
+- change(dungeons): a group gets into the tool only with "Post group" – your own typed "LF2M …" no longer makes one
+- feat(test): /lg test lfgtool [reset] – which group finder functions the client offers and which dungeons it knows
+
+## [1.0.71] – 2026-11-25
+
+- change(dungeons): reading guild chat is off until switched on with the new "Guild chat" button on Who wants to go (accent colour while on); entries from guild chat are hidden while it is off
+- style(dungeons): open groups, LFM tag, "Your group" and players who fit a spot use the accent colour
+
+## [1.0.70] – 2026-11-25
+
+- feat(dungeons): post your group – "Post group" (or /lg lfm [dungeon]) picks the open spots per role and a note, writes one line in guild chat ("LF2M Stratholme Undead - need Healer, DPS") and shows the group to addon users
+- feat(dungeons): open groups at the top of a dungeon (yours first) with "Join" (whisper prepared) and an "LFM" tag in the dungeon list
+- feat(dungeons): spots fill by themselves when players join your group and open again when they leave; the post closes when the group is full or after 30 min
+- feat(dungeons): toast when a group for a dungeon you marked needs your main role or off spec (switch under Modules and Notifications)
+- feat(dungeons): players who fit an open spot of your group are marked green
+- feat(dungeons): the nine new Forever dungeons are in the list (Hall of Thanes, Ruins of Lordaeron, Excavation Site: Wetlands, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold, Shaper's Terrace), sorted by level and tagged "Forever"
+- feat(dungeons): guild chat is read – "LFG Strat UD" puts the player on the list for 2 hours (also without the addon, role from "as heal"), "LF2M Scholo need tank" shows as an open group; trade messages are ignored
+- feat(dungeons): your own chat message makes a short mark of yours (or your open group) that is synced
+- feat(search): results in two lines – name and where it is ("Notifications › General"), card titles as "Section:", the same setting in several places as one entry ("2 places: …") that opens with +
+- feat(test): /lg test lfgpost (open groups + toast), /lg test lfgchat [text] (what is read from a chat message)
+
+## [1.0.69] – 2026-11-25
+
+- feat(dungeons): new page Dungeons – mark the dungeons you want to run with main role, off spec, a note and up to six wanted items (/lg lfg)
+- feat(dungeons): "Who wants to go" lists everyone per dungeon with role, items and note; online only, fits my level; click whispers (text prepared, not sent), right-click invites
+- feat(dungeons): wanted items show overlaps with other players of the same dungeon; items you get leave your list by themselves
+- feat(dungeons): marks run out after 14 days (7/30 selectable), "Renew" keeps them; synced to the guild on change and at login
+- feat(test): /lg test lfg with made-up members
 
 ## [1.0.68] – 2026-11-25
 

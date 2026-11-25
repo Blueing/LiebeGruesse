@@ -17,6 +17,8 @@ local recent = {}       -- [query] = time of the last answer
 local pending = {}      -- [query] = { token, timer }
 local claims = {}       -- [query] = lowest token seen
 local REPEAT = 30
+local lastAnswer = -1   -- GetTime() of the last "[LG] …" line in guild chat (any client)
+local BACKUP_WAIT = 5   -- no answer this long after a question: one more round
 local MAX_CHAT = 250
 
 local function settings() return ns.Database.Settings().craft end
@@ -336,18 +338,146 @@ function Craft.TestPrice(text)
     ns.Print("[Test] [LG] %s", Craft.Reply("price " .. text))
 end
 
-local function say(text, channel, target)
+local function say(text, channel, target, asked)
     text = "[LG] " .. text
     -- automatic answers never go out from combat or a chat lockdown: the game blocks them
-    -- (Core/AutoPost.lua also notices when the game blocks this client's lines)
-    ns.AutoPost.Send("craft", text, channel, target)
+    if channel ~= "GUILD" or not asked then
+        ns.SendChatAuto("craft-answer-" .. (target or channel), text, channel, target)
+        return
+    end
+    -- guild: a late answer only if nobody else answered meanwhile (and not older than a minute)
+    ns.AutoChat("craft-answer-GUILD", function()
+        if lastAnswer > asked or GetTime() - asked > 60 then return end
+        if ns.SendChat(text, "GUILD") then lastAnswer = GetTime(); ns.MarkAutoSent() end
+    end)
 end
+
+---------------------------------------------------------------------------
+-- Answers as addon message: Forever lets an addon send only a few automatic
+-- chat lines, so a question from an addon user (1.0.80+) is answered through
+-- the addon channel – every addon user of the guild sees it in their chat
+-- window, links stay clickable. Players without the addon still get guild chat.
+--   QA  { t = answer text } – GUILD (or WHISPER for whispered questions)
+---------------------------------------------------------------------------
+Craft.ADDON_ANSWER = "1.0.80"   -- first version that shows answers sent as addon message
+
+function Craft.HasAddonAnswers(key)
+    if not key then return false end
+    if Names.Same(key, Names.Me()) then return true end
+    local h = ns.Versions and ns.Versions.heard[key]
+    local v = (h and h.v) or (ns.Database.Member(key) or {}).v
+    return type(v) == "string" and ns.CompareVersions(v, Craft.ADDON_ANSWER) >= 0
+end
+
+-- text of someone else: only item / spell / enchant links survive, every other escape goes
+local LINK = "|c%x%x%x%x%x%x%x%x|H[^|]+|h%[[^%]|]*%]|h|r"
+function Craft.SafeText(text)
+    text = tostring(text or "")
+    local out, pos = {}, 1
+    while pos <= #text do
+        local a, b = text:find(LINK, pos)
+        local plain = text:sub(pos, (a or (#text + 1)) - 1):gsub("|", "")
+        out[#out + 1] = plain
+        if not a then break end
+        local link = text:sub(a, b)
+        if link:find("|Hitem:", 1, true) or link:find("|Hspell:", 1, true) or link:find("|Henchant:", 1, true) then
+            out[#out + 1] = link
+        else
+            out[#out + 1] = (link:match("%[([^%]]*)%]") or "")
+        end
+        pos = b + 1
+    end
+    local t = table.concat(out)
+    if #t > 500 then t = t:sub(1, 500) end
+    return t
+end
+
+-- answers shown in the chat window can be posted to guild chat by hand: the
+-- "[Post]" link in the line or /lg post (a click / typed command – the game allows that)
+Craft.answers = {}      -- [id] = { text, posted }
+local answerId = 0
+local function remember(text)
+    answerId = answerId + 1
+    Craft.answers[answerId] = { text = text }
+    Craft.answers[answerId - 20] = nil
+    return answerId
+end
+
+function Craft.PostAnswer(id)
+    if not id then
+        for i = answerId, math.max(1, answerId - 19), -1 do
+            local a = Craft.answers[i]
+            if a and not a.posted then id = i; break end
+        end
+    end
+    local a = id and Craft.answers[id]
+    if not a then ns.Print(L.CRAFT_POST_NONE); return false end
+    if a.posted then ns.Print(L.CRAFT_POST_DONE); return false end
+    if not IsInGuild() then return false end
+    if ns.SendChat("[LG] " .. a.text, "GUILD") then a.posted = true; lastAnswer = GetTime(); return true end
+    return false
+end
+
+local POST_LINK = "addon:LiebeGruesse:post:"
+local function onLink(link)
+    if type(link) ~= "string" then return end
+    local id = link:match("^" .. POST_LINK:gsub("%p", "%%%0") .. "(%d+)")
+    if id then Craft.PostAnswer(tonumber(id)) end
+end
+if EventRegistry and EventRegistry.RegisterCallback then
+    EventRegistry:RegisterCallback("SetItemRef", function(_, link) onLink(link) end, Craft)
+elseif hooksecurefunc and SetItemRef then
+    hooksecurefunc("SetItemRef", function(link) onLink(link) end)
+end
+
+-- shows an answer in every chat window that shows guild chat (guild colour)
+function Craft.ShowAnswer(text, whisper)
+    local info = ChatTypeInfo and ChatTypeInfo[whisper and "WHISPER" or "GUILD"]
+    local r, g, b = (info and info.r) or 0.25, (info and info.g) or 1, (info and info.b) or 0.25
+    local id = remember(text)
+    local line = "[LG] " .. text .. "  |cffe8c27a|H" .. POST_LINK .. id .. "|h[" .. L.CRAFT_POST .. "]|h|r"
+    local contains = (ChatFrameUtil and ChatFrameUtil.ContainsMessageGroup) or ChatFrame_ContainsMessageGroup
+    local shown = false
+    if contains then
+        for i = 1, (NUM_CHAT_WINDOWS or 10) do
+            local f = _G["ChatFrame" .. i]
+            if f and f.AddMessage then
+                local ok, has = pcall(contains, f, whisper and "WHISPER" or "GUILD")
+                if ok and has then f:AddMessage(line, r, g, b); shown = true end
+            end
+        end
+    end
+    if not shown and DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage(line, r, g, b) end
+end
+
+Comm.Register("QA", function(data, sender, channel)
+    if channel ~= "GUILD" and channel ~= "WHISPER" then return end
+    if next(ns.Guild.members) and not ns.Guild.IsMember(sender) then return end
+    if type(data.t) ~= "string" or data.t == "" then return end
+    lastAnswer = GetTime()
+    Craft.ShowAnswer(Craft.SafeText(data.t), channel == "WHISPER")
+end)
+
+-- the winner answers: addon users through the addon channel, others in guild chat
+local function deliver(text, asked, asker)
+    if Craft.HasAddonAnswers(asker) and IsInGuild() then
+        Comm.Send("QA", { t = text }, "GUILD", { priority = "alert" })
+        lastAnswer = GetTime()
+        Craft.ShowAnswer(text)
+        return
+    end
+    say(text, "GUILD", nil, asked)
+end
+Craft.Deliver = deliver
 
 -- election token: lower wins. Out of combat and with recipe data first.
 -- Returns the claim (always below older versions' claims) and the delay.
 local function drawToken(query, raw)
     local token = math.random(1, 100000)
     if ns.ChatBlocked() then token = token + 2000000 end
+    -- sent automatic lines lately: the game may block the next one – another client first
+    local recent = ns.AutoSentSince(60)
+    if recent > 0 then token = token + math.min(recent, 3) * 300000 end
     -- the client that knows the recipe answers (others may miss a profile)
     local isPrice, q, r = Craft.ParsePrice(query, raw)
     local ok, hits = pcall(Craft.Lookup, q, r)
@@ -375,17 +505,11 @@ local function parseQuery(text)
     return clean(raw), raw
 end
 
-ns.On("CHAT_MSG_GUILD", function(_, text, sender)
-    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
-    local query, raw = parseQuery(text)
-    if not query or #query < 3 then return end
-    -- our own question: shown to us (with "[Post in guild chat]") when no answer shows up
-    if Names.IsMe(sender) then ns.AutoPost.WatchOwn(function() return "[LG] " .. Craft.Reply(query, raw) end) end
-    -- a client whose chat lines the game blocks lets the others answer
-    if ns.AutoPost.Blocked("craft") then return end
-    local key = Crafts.Normalize(query)
-    if recent[key] and GetTime() - recent[key] < REPEAT then return end
+-- one election: the lowest claim answers (CQ), the others stay quiet
+local function elect(key, query, raw, asked, asker)
     if pending[key] then return end
+    -- the game blocked a chat line of this client (this session, 30 min): the others answer
+    if ns.blockedAt and GetTime() - ns.blockedAt < 120 then return end
     local token, delay = drawToken(query, raw)
     pending[key] = { token = token }
     pending[key].timer = C_Timer.NewTimer(delay, function()
@@ -398,8 +522,28 @@ ns.On("CHAT_MSG_GUILD", function(_, text, sender)
             pending[key] = nil
             if not still or (claims[key] and claims[key] < still.token) then return end
             recent[key] = GetTime()
-            say(Craft.Reply(query, raw), "GUILD")
+            deliver(Craft.Reply(query, raw), asked, asker)
         end)
+    end)
+end
+Craft.Elect = elect
+
+ns.On("CHAT_MSG_GUILD", function(_, text, sender)
+    if ns.IsSecret(text) or type(text) ~= "string" then return end
+    if text:find("^%[LG%] ") then lastAnswer = GetTime(); return end
+    if not settings().answer or not englishClient() then return end
+    local query, raw = parseQuery(text)
+    if not query or #query < 3 then return end
+    local key = Crafts.Normalize(query)
+    if recent[key] and GetTime() - recent[key] < REPEAT then return end
+    if pending[key] then return end
+    local asked = GetTime()
+    local asker = Names.Key(sender)
+    elect(key, query, raw, asked, asker)
+    -- the winner did not answer (the game blocked it, combat, offline): one more round without it
+    C_Timer.After(BACKUP_WAIT, function()
+        if lastAnswer >= asked then return end
+        elect(key .. "#2", query, raw, asked, asker)
     end)
 end)
 
@@ -419,6 +563,12 @@ end)
 ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
     if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
     local query, raw = parseQuery(text)
-    if ns.AutoPost.Blocked("craft") then return end
-    if query and #query >= 3 then say(Craft.Reply(query, raw), "WHISPER", sender) end
+    if not query or #query < 3 then return end
+    local key = Names.Key(sender)
+    -- an addon user gets the answer as addon message (no chat line, no limit)
+    if key and Craft.HasAddonAnswers(key) and not Names.Same(key, Names.Me()) then
+        Comm.Send("QA", { t = Craft.Reply(query, raw) }, "WHISPER", { target = sender, priority = "alert" })
+        return
+    end
+    say(Craft.Reply(query, raw), "WHISPER", sender)
 end)
