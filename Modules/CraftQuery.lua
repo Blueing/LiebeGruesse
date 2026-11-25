@@ -322,8 +322,15 @@ function Craft.PriceAnswer(query, raw)
     return priceLine(hits[1])
 end
 
--- any question: price questions get the price line
+-- a dungeon name ("!lg ubrs") is answered by the dungeon interest module
+local function dungeonQuestion(query)
+    return ns.Dungeons and ns.Dungeons.ChatQuery and ns.Dungeons.ChatQuery(query) ~= nil
+end
+
+-- any question: dungeon questions get who wants to go, price questions the price line
 function Craft.Reply(query, raw)
+    local dungeon = ns.Dungeons and ns.Dungeons.ChatAnswer and ns.Dungeons.ChatAnswer(query)
+    if dungeon then return dungeon end
     local isPrice, q, r = Craft.ParsePrice(query, raw)
     if isPrice and #q >= 3 then return Craft.PriceAnswer(q, r) end
     return Craft.Answer(query, raw)
@@ -347,6 +354,8 @@ end
 local function drawToken(query, raw)
     local token = math.random(1, 100000)
     if ns.ChatBlocked() then token = token + 2000000 end
+    -- dungeon questions: every client knows the same, so only combat counts
+    if dungeonQuestion(query) then return CLAIM_BASE + token, 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.15 end
     -- the client that knows the recipe answers (others may miss a profile)
     local isPrice, q, r = Craft.ParsePrice(query, raw)
     local ok, hits = pcall(Craft.Lookup, q, r)
@@ -375,9 +384,12 @@ local function parseQuery(text)
 end
 
 ns.On("CHAT_MSG_GUILD", function(_, text, sender)
-    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
+    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer then return end
     local query, raw = parseQuery(text)
-    if not query or #query < 3 then return end
+    if not query then return end
+    -- dungeon names are the same in every client language and may be short ("!lg zf")
+    local dungeon = dungeonQuestion(query)
+    if not dungeon and (#query < 3 or not englishClient()) then return end
     local key = Crafts.Normalize(query)
     if recent[key] and GetTime() - recent[key] < REPEAT then return end
     if pending[key] then return end
@@ -412,7 +424,8 @@ end)
 
 -- Whispered queries are answered directly
 ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
-    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
+    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer then return end
     local query, raw = parseQuery(text)
-    if query and #query >= 3 then say(Craft.Reply(query, raw), "WHISPER", sender) end
+    if not query then return end
+    if dungeonQuestion(query) or (#query >= 3 and englishClient()) then say(Craft.Reply(query, raw), "WHISPER", sender) end
 end)

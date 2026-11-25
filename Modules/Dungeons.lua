@@ -591,6 +591,75 @@ function Dungeons.TestChat(text)
 end
 
 ---------------------------------------------------------------------------
+-- "!lg ubrs" in guild chat (or as a whisper): one addon user answers who
+-- wants to run it. CraftQuery handles the "!lg" election and sending; it asks
+-- here first whether the question is a dungeon.
+---------------------------------------------------------------------------
+local QUERY_FILLER = { lfg = true, lfm = true, lf = true, dungeon = true, dungeons = true, run = true, who = true, wer = true }
+
+-- dungeon keys when the whole question names a dungeon ("ubrs", "strat ud",
+-- "Scholomance", "lfg brd"); nil otherwise, so crafting questions stay crafting
+function Dungeons.ChatQuery(text)
+    if type(text) ~= "string" or ns.Database.Settings().modules.dungeons == false then return nil end
+    local words = {}
+    for w in normalize(text):gmatch("%S+") do if not QUERY_FILLER[w] then words[#words + 1] = w end end
+    local q = table.concat(words, " ")
+    if q == "" then return nil end
+    for _, d in ipairs(Dungeons.LIST) do
+        if q == d.key or q == normalize(d.short):match("^%s*(.-)%s*$") or q == normalize(d.name):match("^%s*(.-)%s*$") then return { d.key } end
+        for _, a in ipairs(ALIASES[d.key] or {}) do if q == a then return { d.key } end end
+    end
+    for _, g in ipairs(GROUP_ALIASES) do
+        for _, w in ipairs(g.words) do
+            if q == w then return g.keys or g.pick end
+        end
+    end
+    return nil
+end
+
+local CHAT_MAX = 240   -- "[LG] " is added in front; guild chat takes 255
+local function answerFor(dk, maxNames)
+    local d = Dungeons.BY_KEY[dk]
+    local rows = {}
+    for _, r in ipairs(Dungeons.Interested(dk)) do if not r.test then rows[#rows + 1] = r end end
+    if #rows == 0 then return L.DG_ANSWER_NONE:format(d.name) end
+    table.sort(rows, function(a, b)
+        if a.online ~= b.online then return a.online end
+        return (a.e.a or 0) > (b.e.a or 0)
+    end)
+    local parts = {}
+    for i, r in ipairs(rows) do
+        if i > maxNames then parts[#parts + 1] = L.CRAFT_MORE:format(#rows - maxNames); break end
+        local info = {}
+        info[#info + 1] = r.e.r and roleName(r.e.r) or L.DG_ANSWER_CHAT
+        if r.online then info[#info + 1] = "online" end
+        parts[#parts + 1] = ("%s (%s)"):format(Names.Display(r.name), table.concat(info, ", "))
+    end
+    return L.DG_ANSWER:format(d.name, #rows, table.concat(parts, ", "))
+end
+
+-- the chat answer for a dungeon question (nil: not a dungeon question)
+function Dungeons.ChatAnswer(text)
+    local keys = Dungeons.ChatQuery(text)
+    if not keys then return nil end
+    -- one dungeon: up to 6 names; several (e.g. "strat"): fewer each
+    for maxNames = (#keys == 1 and 6 or 3), 0, -1 do
+        local parts = {}
+        for _, dk in ipairs(keys) do parts[#parts + 1] = answerFor(dk, maxNames) end
+        local text2 = table.concat(parts, " · ")
+        if #text2 <= CHAT_MAX or maxNames == 0 then return text2:sub(1, CHAT_MAX) end
+    end
+end
+
+-- /lg test lfgask <dungeon>: the "!lg <dungeon>" answer, only for you
+function Dungeons.TestAsk(text)
+    text = tostring(text or "")
+    if not text:find("%S") then text = "ubrs" end
+    local answer = Dungeons.ChatAnswer(text)
+    ns.Print(L.TEST_TAG .. " " .. (answer and ("[LG] " .. answer) or L.DG_ASK_NO_DUNGEON:format(text)))
+end
+
+---------------------------------------------------------------------------
 -- Reading: who wants a dungeon
 ---------------------------------------------------------------------------
 local testRecords, testUntil = nil, 0
