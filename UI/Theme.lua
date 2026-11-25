@@ -68,10 +68,13 @@ Theme.colors = presetByKey[Theme.DEFAULT].colors
 -- Media: client fonts/textures plus LibSharedMedia when another addon has it
 ---------------------------------------------------------------------------
 -- Expressway is not shipped with this addon (its license does not allow it).
--- It is used when another addon provides it or when you put your own copy
--- at Media\Fonts\Expressway.ttf.
+-- It is the default when another installed addon provides it (or your own
+-- copy at Media\Fonts\Expressway.ttf); otherwise the shipped Barlow is used.
 local EXPRESSWAY = {
     "Interface\\AddOns\\LiebeGruesse\\Media\\Fonts\\Expressway.ttf",
+    "Interface\\AddOns\\EllesmereUI\\media\\fonts\\Expressway.TTF",
+    "Interface\\AddOns\\ElvUI\\Core\\Media\\Fonts\\Expressway.ttf",
+    "Interface\\AddOns\\ElvUI\\Media\\Fonts\\Expressway.ttf",
     "Interface\\AddOns\\FojjiCore\\font\\Expressway.ttf",
 }
 local FALLBACK_FONT = "Fonts\\ARIALN.TTF"
@@ -101,8 +104,8 @@ do
     end
 end
 local FONTS = {
-    { key = "Barlow", path = BARLOW },
     { key = "Expressway", path = EXPRESSWAY[1] },
+    { key = "Barlow", path = BARLOW },
     { key = "Arial Narrow", path = "Fonts\\ARIALN.TTF" },
     { key = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
     { key = "Skurri", path = "Fonts\\SKURRI.TTF" },
@@ -126,7 +129,7 @@ local function mediaList(builtIn, kind)
         local text = m.key
         if kind == "font" then
             path = Theme.FontPath(m.key)
-            if m.key == "Expressway" and not Theme.HasExpressway() then text = m.key .. " (" .. (ns.L.FONT_NOT_FOUND or "?") .. ")" end
+            if m.key == "Expressway" and not Theme.HasExpressway() then text = m.key .. " (" .. (ns.L.FONT_EXPRESSWAY_MISSING or "?") .. ")" end
         end
         list[#list + 1] = { value = m.key, text = text, path = path }
         seen[m.key] = true
@@ -202,7 +205,32 @@ function Theme.TexturePath(key)
     return resolve(TEXTURES, "statusbar", key, Theme.WHITE)
 end
 
-function Theme.Icon(name) return Theme.ICONS .. name end
+-- icons come in 16, 32 and 64 px (rendered at that size, not scaled down);
+-- the smallest file that is at least as big as the icon on screen is used
+local NO_SMALL = { ["portrait-ring"] = true }
+local function pixelsPerUnit()
+    local _, h = ns.Call(GetPhysicalScreenSize)
+    local scale = UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1
+    local t = ns.db and ns.db.settings and ns.db.settings.theme
+    return ((tonumber(h) or 1080) / 768) * (tonumber(scale) or 1) * ((t and t.windowScale) or 1)
+end
+function Theme.IconSize(size)
+    if not size then return 32 end
+    local px = size * pixelsPerUnit()
+    return px <= 16 and 16 or (px <= 32 and 32 or 64)
+end
+-- path (without extension) and file size in px
+function Theme.IconFile(name, size)
+    local dim = NO_SMALL[name] and 64 or Theme.IconSize(size)
+    if dim == 64 then return Theme.ICONS .. name, 64 end
+    return Theme.ICONS .. dim .. "\\" .. name, dim
+end
+function Theme.Icon(name, size) return (Theme.IconFile(name, size)) end
+-- sets an icon on a texture in the file size that fits the texture's size
+function Theme.SetIcon(tex, name)
+    local w = tex.GetWidth and tex:GetWidth() or 0
+    tex:SetTexture(Theme.Icon(name, (w and w > 0) and w or nil))
+end
 
 ---------------------------------------------------------------------------
 -- Settings access
@@ -215,6 +243,8 @@ end
 function Theme.Font(head)
     local s = settings()
     local key = s and s.font or FONTS[1].key
+    -- Expressway is the default; without a copy on this client: Barlow
+    if key == "Expressway" and not Theme.HasExpressway() then key = "Barlow" end
     if key == "Barlow" then
         -- shipped with the addon: used directly; Theme.SetFont falls back per font string
         -- if the client refuses the file (new files need a full game restart, not /reload)
@@ -308,6 +338,14 @@ function Theme.Migrate()
     s.fontScale = math.max(s.fontScale or 1, 1.05)
     s.windowAlpha = s.windowAlpha or 1
     s.windowScale = s.windowScale or 1
+end
+
+-- v1.0.64: Expressway is the default again (Barlow when the client has no copy)
+function Theme.Migrate6()
+    local s = settings()
+    if not s or s.v6 then return end
+    s.v6 = true
+    if s.font == "Barlow" or not s.font then s.font = "Expressway" end
 end
 
 -- v1.0.20: the shipped Barlow becomes the default font (Appearance can switch back)

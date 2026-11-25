@@ -227,7 +227,7 @@ UI.AddPage("notifications", L.PAGE_NOTIFY, 91, function(content, page)
     local form = UI.Form(content)
     page.Search = function(text) return form:Filter(text) end
     page.SearchEnter = function() form:JumpFirst() end
-    page.searchRow = true
+    page.head = L.HEAD_NOTIFY
     form.scroll:SetPoint("TOPLEFT")
     form.scroll:SetPoint("BOTTOMRIGHT", -8, 0)
     local function get(k) return function() return Notify.Settings()[k] end end

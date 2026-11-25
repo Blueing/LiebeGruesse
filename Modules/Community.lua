@@ -946,7 +946,7 @@ UI.AddPage("community", L.PAGE_COMMUNITY, 25, function(content, page)
             c:SetBackdropBorderColor(Theme.Color(hit and "accent" or "borderDim"))
             c.tip = b.tip
             c.help:SetShown(b.tip ~= nil)
-            c.icon:SetTexture(Theme.Icon(b.icon))
+            Theme.SetIcon(c.icon, b.icon)
             for k = 1, LINES do
                 local entry = b.list[k]
                 local medal = k == 1 and Theme.HexColor("gold", "1.") or Theme.HexColor("muted", k .. ".")

@@ -9,7 +9,7 @@ local DEFAULTS = {
         toasts = true,
         tooltips = { unit = true, crafters = true },
         window = {},
-        theme = { preset = "ember", colors = {}, font = "Barlow", weight = "strong", fontScale = 1.05, windowScale = 1, windowAlpha = 1 },
+        theme = { preset = "ember", colors = {}, font = "Expressway", weight = "strong", fontScale = 1.05, windowScale = 1, windowAlpha = 1 },
         modules = { feed = true, community = true, council = true, cooldowns = true, professions = true,
             stats = true, councilOnlyMembers = false },
         craft = { answer = true, prefix = "!lg" },
@@ -54,6 +54,7 @@ function Database.Init()
     ns.Theme.Migrate()
     ns.Theme.Migrate4()
     ns.Theme.Migrate5()
+    ns.Theme.Migrate6()
     local st = ns.db.settings
     if not st.cd.clickMigrated then
         st.cd.clickMigrated = true

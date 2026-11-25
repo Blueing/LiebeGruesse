@@ -164,6 +164,56 @@ local function lastSeen(row)
     return Theme.HexColor("muted", L.DAYS_AGO:format(math.floor(h / 24)))
 end
 
+-- row tooltip: who it is, which data is known (source and age), where they are
+function Roster.RowTooltip(frame, row)
+    local m, g = row.m or {}, row.g or {}
+    ns.TipOwner(frame, "ANCHOR_RIGHT")
+    local icon = ns.SpecIcon(row.class, ns.SpecPoints(m))
+    local iconText = icon and ("|T%s:22:22:0:0:64:64:5:59:5:59|t "):format(icon) or ""
+    local ilvl = row.ilvl and Theme.HexColor("gold", L.ARM_ILVL:format(("%.1f"):format(row.ilvl))) or ""
+    GameTooltip:AddDoubleLine(iconText .. ns.ColorName(row.name or row.key, row.class), ilvl)
+    local class = row.class and (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[row.class] or row.class) or nil
+    local who = {}
+    if row.level then who[#who + 1] = L.LEVEL .. " " .. row.level end
+    if class then who[#who + 1] = ("|c%s%s|r"):format(ns.ClassHex(row.class), class) end
+    if row.spec then who[#who + 1] = Theme.HexColor("text", row.spec) end
+    if #who > 0 then GameTooltip:AddLine(Theme.HexColor("textDim", table.concat(who, Theme.HexColor("muted", " · ")))) end
+    if row.rank and row.rank ~= "" then GameTooltip:AddLine(Theme.HexColor("muted", row.rank)) end
+
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(Theme.HexColor("muted", ns.Upper(L.COL_DATA)))
+    local function data(glyph, label, value, source, t)
+        local left = UI.Glyph(glyph, value and "textDim" or "borderDim", 12) .. " " .. Theme.HexColor("textDim", label .. ": ")
+            .. (value and Theme.HexColor("text", value) or Theme.HexColor("muted", L.UNKNOWN))
+            .. (source and Theme.HexColor("muted", " · " .. source) or "")
+        GameTooltip:AddDoubleLine(left, t and Theme.HexColor("muted", ns.Ago(t)) or "")
+    end
+    local gear, _, source, gearT = ns.Inspect.Gear(m)
+    data("shield", L.GEAR, gear and L.ROSTER_TIP_COMPLETE or nil,
+        gear and (source == "inspect" and L.ARM_FROM_INSPECT or L.ARM_FROM_ADDON) or nil, gear and gearT or nil)
+    local insp = m.insp or {}
+    if tostring(m.tp or ""):find("[1-9]") then data("sparkles", L.ARM_TALENTS, tostring(m.tp), L.ARM_FROM_ADDON, m.t)
+    elseif insp.tp then data("sparkles", L.ARM_TALENTS, tostring(insp.tp), L.ARM_FROM_INSPECT, insp.t)
+    else data("sparkles", L.ARM_TALENTS) end
+    if row.profs and #row.profs > 0 then
+        local names = {}
+        for _, p in ipairs(row.profs) do names[#names + 1] = ("%s %s"):format(p.n, p.s or "?") end
+        data("hammer", L.COL_PROFESSIONS, table.concat(names, ", "), L.ARM_FROM_ADDON, m.t)
+    else
+        data("hammer", L.COL_PROFESSIONS)
+    end
+    if row.online then
+        local zone = g.zone or row.zone
+        GameTooltip:AddLine(UI.Glyph("dot", "good", 10) .. " " .. Theme.HexColor("good",
+            zone and zone ~= "" and L.ROSTER_TIP_ZONE:format(zone) or L.ONLINE))
+    elseif row.offline then
+        GameTooltip:AddLine(UI.Glyph("ring", "muted", 10) .. " " .. Theme.HexColor("muted", (L.OFFLINE:gsub("^%l", string.upper)) .. " · ") .. lastSeen(row))
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(Theme.HexColor("muted", L.ROSTER_ROW_TIP))
+    GameTooltip:Show()
+end
+
 ---------------------------------------------------------------------------
 -- Page
 ---------------------------------------------------------------------------
@@ -291,7 +341,7 @@ UI.AddPage("roster", L.PAGE_ROSTER, 10, function(content, page)
                 else e.icon:SetPoint("LEFT", self.items[i - 1].label, "RIGHT", 24, 0) end
                 self.items[i] = e
             end
-            e.icon:SetTexture(Theme.Icon(it[1]))
+            Theme.SetIcon(e.icon, it[1])
             e.icon:SetVertexColor(Theme.Color(it[2]))
             e.num:SetText(it[3])
             e.num:SetTextColor(Theme.Color(it[5] or "text"))
@@ -465,10 +515,7 @@ UI.AddPage("roster", L.PAGE_ROSTER, 10, function(content, page)
             ns.Armory.Open(row.key, list.rows, function() showList(true); list:Draw() end)
         end,
         onEnter = function(frame, row)
-            ns.TipOwner(frame, "ANCHOR_RIGHT")
-            GameTooltip:AddLine(ns.ColorName(row.name, row.class))
-            GameTooltip:AddLine(L.ROSTER_ROW_TIP, 0.6, 0.6, 0.6, true)
-            GameTooltip:Show()
+            Roster.RowTooltip(frame, row)
         end,
         isSelected = function(row) return row.key == state.selected end,
         rowMark = function(row) return Roster.IsMine(row.key, row.m) and "lapis" or nil end,

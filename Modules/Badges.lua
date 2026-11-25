@@ -203,7 +203,7 @@ function Badges.FillCard(c, key, width)
             c.icons[i] = f
         end
         f.b = b
-        f.icon:SetTexture(Theme.Icon(b.def.icon))
+        Theme.SetIcon(f.icon, b.def.icon)
         f.icon:SetVertexColor(Theme.Color(TIER_COLORS[b.tier]))
         f:SetBackdropBorderColor(Theme.Color(TIER_COLORS[b.tier]))
         f:ClearAllPoints()

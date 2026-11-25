@@ -117,7 +117,7 @@ function Bar.Layout()
             b:SetScript("OnClick", function() ns.Safe(def.run); ns.After(0.2, Bar.Layout) end)
             b:SetText(o.labels and def.text() or "")
             if b.icon then
-                b.icon:SetTexture(Theme.Icon(def.icon))
+                Theme.SetIcon(b.icon, def.icon)
                 b.icon:ClearAllPoints()
                 if o.labels then b.icon:SetPoint("RIGHT", b.label, "LEFT", -6, 0) else b.icon:SetPoint("CENTER") end
             end

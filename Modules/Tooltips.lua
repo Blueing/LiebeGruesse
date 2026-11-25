@@ -208,7 +208,7 @@ UI.AddPage("tooltips", L.PAGE_TOOLTIPS, 92, function(content, page)
     local form = UI.Form(content)
     page.Search = function(text) return form:Filter(text) end
     page.SearchEnter = function() form:JumpFirst() end
-    page.searchRow = true
+    page.head = L.HEAD_TOOLTIPS
     local o = Tips.Settings
     local function get(k) return function() return o()[k] end end
     local function set(k) return function(v) o()[k] = v; page.Preview() end end

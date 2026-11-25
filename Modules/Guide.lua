@@ -124,7 +124,7 @@ Guide.LIST = {
       steps = {
           { "Auto-fill", "On first start your own blessings are filled in for you." },
           { "Plan", "Grid of paladins × classes. The mouse wheel changes a blessing, “Suggest” fills the rest." },
-          { "Sync", "Assignments sync with other addon users and with PallyPower." },
+          { "Sync", "Assignments sync with other addon users and with PallyPower guests – both ways, as leader also for them." },
           { "Cast", "The bar: left click = next missing blessing, right click = assign automatically." },
       },
       where = { { "page", "Page", "Raid tools › Blessings" }, { "hud", "HUD", "Blessing bar (lock button to move it)" },
@@ -514,7 +514,7 @@ UI.AddPage("guide", L.PAGE_GUIDE, 96, function(content, page)
                     r:ClearAllPoints(); r:SetPoint("TOPLEFT", 0, -y); r:SetWidth(W)
                     local on = e.key == state.key
                     r.sel:SetShown(on); r.bar:SetShown(on)
-                    r.icon:SetTexture(Theme.Icon(e.icon))
+                    Theme.SetIcon(r.icon, e.icon)
                     r.icon:SetVertexColor(Theme.Color(on and "accent" or "muted"))
                     r.text:SetTextColor(Theme.Color(on and "text" or "textDim"))
                     r.text:SetWidth(math.max(40, W - 14 - 14 - 9 - 24))
@@ -529,7 +529,7 @@ UI.AddPage("guide", L.PAGE_GUIDE, 96, function(content, page)
                     if hit then Guide.hits = Guide.hits + 1 end
                     local st = Guide.State(e)
                     r.dot:SetShown(st ~= "info")
-                    r.dot:SetTexture(Theme.Icon(st == "always" and "ring" or "dot"))
+                    Theme.SetIcon(r.dot, st == "always" and "ring" or "dot")
                     r.dot:SetVertexColor(Theme.Color(st == "on" and "good" or st == "off" and "borderDim" or "muted"))
                     r:Show()
                     y = y + 27
@@ -676,7 +676,7 @@ UI.AddPage("guide", L.PAGE_GUIDE, 96, function(content, page)
         local actW = W < 560 and 0 or 150
         local tx = 16 + 56 + 16
         local tw = W - tx - 16 - (actW > 0 and (actW + 16) or 0)
-        hero.icon:SetTexture(Theme.Icon(e.icon))
+        Theme.SetIcon(hero.icon, e.icon)
         local sec
         for _, s in ipairs(SECTIONS) do if s.key == e.section then sec = s end end
         hero.kicker:SetText(ns.Upper(L[sec.title]) .. (e.key ~= "start" and (" · " .. L.GUIDE_KICKER_MODULE) or ""))
@@ -786,7 +786,7 @@ UI.AddPage("guide", L.PAGE_GUIDE, 96, function(content, page)
                     r.line:SetWidth(lw - 28)
                     wy = wy + 4
                 end
-                r.icon:SetTexture(Theme.Icon(WHERE_ICON[d[1]] or "dot"))
+                Theme.SetIcon(r.icon, WHERE_ICON[d[1]] or "dot")
                 r.icon:ClearAllPoints(); r.icon:SetPoint("TOPLEFT", whereCard, "TOPLEFT", 14, -(wy + 1))
                 r.k:SetText(d[2]); textAt(r.k, whereCard, 36, wy + 1, 76)
                 r.v:SetText(d[3])

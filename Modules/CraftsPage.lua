@@ -7,7 +7,6 @@ local Page = {}
 ns.CraftsPage = Page
 
 local FAV = "__fav"
-local ICON_PATH = "Interface\\AddOns\\LiebeGruesse\\Media\\Icons\\"
 
 local state = { prof = nil, mode = "recipes", search = "", onlineOnly = false, expanded = {}, member = nil }
 Page.state = state
@@ -178,7 +177,7 @@ local function treeColumns(refresh, compact)
           end,
           onClick = function(row) if row.kind == "recipe" then Crafts.ToggleFav("recipes", row.id); refresh() end end,
           tip = function(row) if row.kind == "recipe" then return L.CRAFT_FAV_TIP end end },
-        { key = "name", flex = true,
+        { key = "name", flex = true, minWidth = compact and 120 or 170,
           icon = function(row)
               if row.kind == "recipe" then return Crafts.Icon(row.id) end
               if row.kind == "reagent" then return Items.Icon(row.item) end
@@ -202,7 +201,7 @@ local function treeColumns(refresh, compact)
               if row.kind == "note" then return "     " .. Theme.HexColor("muted", row.text) end
               return ""
           end },
-        { key = "crafters", width = compact and 110 or 230, align = compact and "RIGHT" or "LEFT",
+        { key = "crafters", width = compact and 110 or 200, align = compact and "RIGHT" or "LEFT",
           text = function(row)
               if row.kind ~= "recipe" then return "" end
               if compact then return Theme.HexColor("muted", L.CRAFT_N_CRAFTERS:format(#row.crafters)) end
@@ -221,6 +220,19 @@ local function treeColumns(refresh, compact)
               return L.CRAFT_CRAFTERS_TIP:format(#row.crafters), lines
           end,
           onClick = function(row, _, cell) if row.kind == "recipe" then whisperMenu(row, cell) end end },
+        { key = "online", width = 70, align = "RIGHT", optional = 1,
+          text = function(row)
+              if row.kind ~= "recipe" or compact then return "" end
+              local n = 0
+              for _, key in ipairs(row.crafters) do if Crafts.Online(key) then n = n + 1 end end
+              return Theme.HexColor(n > 0 and "good" or "muted", L.CRAFT_N_ONLINE:format(n))
+          end },
+        { key = "chars", width = 92, align = "RIGHT", optional = 2,
+          text = function(row)
+              if row.kind ~= "recipe" or compact then return "" end
+              local n = #row.crafters
+              return Theme.HexColor("textDim", (n == 1 and L.CRAFT_N_CHAR or L.CRAFT_N_CHARS):format(n))
+          end },
         { key = "cost", width = 96, align = "RIGHT",
           text = function(row)
               if not view().cost then return "" end
@@ -332,79 +344,118 @@ function Page.Build(parent)
             f.Filter(text)
         end
     end
-    local mode = UI.Segmented(f, 210, { { value = "recipes", text = L.RECIPES }, { value = "members", text = L.CRAFT_MEMBERS } },
-        function() return state.mode end, function(v) state.mode = v; f.Refresh() end)
-    mode:SetPoint("TOPLEFT", 0, -1)
-    local onlineCheck = UI.Check(f, L.CRAFT_ONLINE_ONLY, function() return state.onlineOnly end,
-        function(v) state.onlineOnly = v; f.Refresh() end, L.CRAFT_ONLINE_ONLY_TIP)
-    onlineCheck:SetPoint("LEFT", mode, "RIGHT", 14, 0)
-    local stats = UI.Text(f, 11, "muted", "RIGHT")
-    stats:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -7)
-    stats:SetPoint("LEFT", onlineCheck, "RIGHT", 10, 0)
+    -- left: guild title and the professions, grouped like the game does
+    local side = CreateFrame("Frame", nil, f)
+    side:SetPoint("TOPLEFT")
+    side:SetPoint("BOTTOMLEFT")
+    side:SetWidth(240)
+    local kickerLine = UI.Fill(side, "bronzeDim", "ARTWORK")
+    kickerLine:SetSize(22, 1)
+    kickerLine:SetPoint("TOPLEFT", 2, -10)
+    local kicker = UI.Text(side, 11, "muted", "LEFT", nil, true)
+    kicker:SetPoint("LEFT", kickerLine, "RIGHT", 8, 0)
+    kicker:SetText(ns.Upper(L.PAGE_PROFESSIONS))
+    local guildTitle = UI.Text(side, 26, "text", "LEFT", nil, true)
+    guildTitle:SetPoint("TOPLEFT", 0, -22)
+    guildTitle:SetPoint("RIGHT", side, "RIGHT", -4, 0)
+    guildTitle:SetWordWrap(false)
+    local stats = UI.Text(side, 11, "muted", "LEFT")
+    stats:SetPoint("TOPLEFT", guildTitle, "BOTTOMLEFT", 0, -4)
+    stats:SetPoint("RIGHT", side, "RIGHT", -4, 0)
+    stats:SetWordWrap(false)
 
-    -- view toggles (second row)
-    local viewBar = CreateFrame("Frame", nil, f)
-    viewBar:SetPoint("TOPLEFT", 0, -34)
-    viewBar:SetPoint("TOPRIGHT", 0, -34)
-    viewBar:SetHeight(22)
-    local showLabel = UI.Text(viewBar, 11, "muted")
-    showLabel:SetPoint("LEFT", 2, 0)
-    showLabel:SetText(L.CRAFT_SHOW)
-    local x = (showLabel:GetStringWidth() or 50) + 14
-    local checks = {}
-    for _, def in ipairs({ { "mats", L.CRAFT_SHOW_MATS }, { "crafters", L.CRAFT_SHOW_CRAFTERS }, { "cost", L.CRAFT_SHOW_COST } }) do
-        local c = UI.Check(viewBar, def[2], function() return view()[def[1]] end,
-            function(v) view()[def[1]] = v; f.Refresh() end)
-        c:SetPoint("LEFT", x, 0)
-        x = x + c:GetWidth() + 18
-        checks[#checks + 1] = c
-    end
-    local expandAll = UI.Button(viewBar, "", 150, 22, function()
-        state.expandAll = not state.expandAll
-        wipe(state.expanded)
-        f.Refresh()
-    end)
-    expandAll:SetPoint("LEFT", x + 6, 0)
-
-    -- professions
-    local profList = UI.List(f, {
-        noHeader = true, rowHeight = 28,
+    local profList = UI.List(side, {
+        noHeader = true, rowHeight = 30,
         columns = {
-            { key = "name", flex = true, icon = function(r) return r.icon end, noHighlight = true,
-              text = function(r) return r.key == FAV and Theme.HexColor("gold", r.name) or r.name end },
-            { key = "count", width = 44, align = "RIGHT", noHighlight = true, text = function(r) return Theme.HexColor("muted", r.countText or "") end },
+            { key = "name", flex = true, icon = function(r) return r.icon end, iconSize = 22, noHighlight = true,
+              text = function(r)
+                  if r.section then return Theme.HexColor("muted", ns.Upper(r.name)) end
+                  return r.key == FAV and Theme.HexColor("gold", r.name) or Theme.HexColor("text", r.name)
+              end },
+            { key = "count", width = 40, align = "RIGHT", noHighlight = true,
+              text = function(r) return r.section and "" or Theme.HexColor("textDim", r.countText or "") end },
         },
-        onClick = function(row) state.prof = row.key; state.member = nil; f.Refresh() end,
-        isSelected = function(row) return row.key == state.prof end,
+        onClick = function(row) if row.section then return end state.prof = row.key; state.member = nil; f.Refresh() end,
+        isSelected = function(row) return not row.section and row.key == state.prof end,
         onEnter = function(frame, row)
             if row.tip then UI.Tooltip(frame, row.name, { row.tip }) end
         end,
     })
-    profList:SetPoint("TOPLEFT", 0, -66)
-    profList:SetPoint("BOTTOMLEFT")
-    profList:SetWidth(220)
+    profList:SetPoint("TOPLEFT", 0, -78)
+    profList:SetPoint("BOTTOMRIGHT")
     profList:SetEmptyText(L.NO_PROFESSIONS)
 
     local right = CreateFrame("Frame", nil, f)
-    right:SetPoint("TOPLEFT", profList, "TOPRIGHT", 14, 0)
+    right:SetPoint("TOPLEFT", side, "TOPRIGHT", 16, 0)
     right:SetPoint("BOTTOMRIGHT")
 
+    -- header: profession icon, name and recipe count; Characters / Recipes on the right
+    local head = CreateFrame("Frame", nil, right)
+    head:SetPoint("TOPLEFT"); head:SetPoint("TOPRIGHT")
+    head:SetHeight(44)
+    local headIcon = head:CreateTexture(nil, "ARTWORK")
+    headIcon:SetSize(32, 32)
+    headIcon:SetPoint("LEFT", 2, 0)
+    headIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local title = UI.Text(head, 22, "text", "LEFT", nil, true)
+    title:SetPoint("LEFT", headIcon, "RIGHT", 12, 0)
+    title:SetWordWrap(false)
+    local sub = UI.Text(head, 12, "muted", "LEFT")
+    sub:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 12, 2)
+    sub:SetWordWrap(false)
+    local mode = UI.SubTabs(head, { { key = "members", title = L.CRAFT_CHARACTERS }, { key = "recipes", title = L.RECIPES } },
+        function(key) if state.mode ~= key then state.mode = key; f.Refresh() end end)
+    local tabsW = 0
+    for _, b in ipairs(mode.buttons) do tabsW = tabsW + b:GetWidth() + 6 end
+    mode:SetWidth(tabsW)
+    mode:SetPoint("RIGHT", head, "RIGHT", 0, 0)
+    local headLine = UI.Divider(right)
+    headLine:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, 0)
+    headLine:SetPoint("TOPRIGHT", head, "BOTTOMRIGHT", 0, 0)
+
+    -- toolbar: online only, what the rows show, expand all
+    local viewBar = CreateFrame("Frame", nil, right)
+    viewBar:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -8)
+    viewBar:SetPoint("TOPRIGHT", head, "BOTTOMRIGHT", 0, -8)
+    viewBar:SetHeight(22)
+    local onlineCheck = UI.Check(viewBar, L.CRAFT_ONLINE_ONLY, function() return state.onlineOnly end,
+        function(v) state.onlineOnly = v; f.Refresh() end, L.CRAFT_ONLINE_ONLY_TIP)
+    onlineCheck:SetPoint("LEFT", 2, 0)
+    local showLabel = UI.Text(viewBar, 11, "muted")
+    showLabel:SetPoint("LEFT", onlineCheck, "RIGHT", 22, 0)
+    showLabel:SetText(L.CRAFT_SHOW)
+    local checks = {}
+    local prev = showLabel
+    for _, def in ipairs({ { "mats", L.CRAFT_SHOW_MATS }, { "crafters", L.CRAFT_SHOW_CRAFTERS }, { "cost", L.CRAFT_SHOW_COST } }) do
+        local c = UI.Check(viewBar, def[2], function() return view()[def[1]] end,
+            function(v) view()[def[1]] = v; f.Refresh() end)
+        c:SetPoint("LEFT", prev, "RIGHT", 14, 0)
+        prev = c
+        checks[#checks + 1] = c
+    end
+    local expandAll = UI.Button(viewBar, "", 130, 22, function()
+        state.expandAll = not state.expandAll
+        wipe(state.expanded)
+        f.Refresh()
+    end)
+    expandAll:SetPoint("RIGHT", viewBar, "RIGHT", 0, 0)
+
+    local body = CreateFrame("Frame", nil, right)
+    body:SetPoint("TOPLEFT", viewBar, "BOTTOMLEFT", 0, -8)
+    body:SetPoint("BOTTOMRIGHT")
+
     -- recipes mode
-    local recipes = CreateFrame("Frame", nil, right)
+    local recipes = CreateFrame("Frame", nil, body)
     recipes:SetAllPoints()
-    local title = UI.Text(recipes, 15, "gold")
-    title:SetPoint("TOPLEFT", 4, -4)
-    local sub = UI.Text(recipes, 11, "muted", "RIGHT")
-    sub:SetPoint("TOPRIGHT", recipes, "TOPRIGHT", -4, -7)
     local tree = UI.List(recipes, {
-        noHeader = true, rowHeight = 24, columns = treeColumns(refresh), keepEmptyText = true,
+        noHeader = true, rowHeight = 30, columns = treeColumns(refresh), keepEmptyText = true,
         onClick = treeClick(refresh), onEnter = recipeTooltip,
     })
-    tree:SetPoint("TOPLEFT", 0, -30)
+    tree:SetPoint("TOPLEFT")
     tree:SetPoint("BOTTOMRIGHT")
 
     -- members mode
-    local members = CreateFrame("Frame", nil, right)
+    local members = CreateFrame("Frame", nil, body)
     members:SetAllPoints()
     local memberList = UI.List(members, {
         noHeader = true, rowHeight = 26,
@@ -475,24 +526,35 @@ function Page.Build(parent)
     end
     f.hitsByProf = hitsByProf
 
+    local SECTIONS = { { key = "craft", name = L.CRAFT_SEC_CRAFTING }, { key = "gather", name = L.CRAFT_SEC_GATHERING },
+        { key = "second", name = L.CRAFT_SEC_SECONDARY } }
+    local SECONDARY = { cooking = true, firstaid = true, fishing = true }
     local function profRows(idx)
         local rows = {}
         local favCount = 0
         for _ in pairs(Crafts.Favs("recipes")) do favCount = favCount + 1 end
         local favMembers = 0
         for _ in pairs(Crafts.Favs("members")) do favMembers = favMembers + 1 end
-        rows[1] = { key = FAV, name = L.CRAFT_FAVORITES, icon = ICON_PATH .. "star-filled.tga",
+        rows[1] = { key = FAV, name = L.CRAFT_FAVORITES, icon = Theme.Icon("star-filled", 22),
             countText = tostring(state.mode == "members" and favMembers or favCount), order = 0, tip = L.CRAFT_FAV_LIST_TIP }
-        local list = {}
+        local groups = { craft = {}, gather = {}, second = {} }
         for key, p in pairs(idx.profs) do
             local info = Crafts.ProfInfo(key)
+            local group = SECONDARY[key] and "second" or (info and info.gather and "gather") or "craft"
+            local list = groups[group]
             list[#list + 1] = { key = key, name = Crafts.ProfName(key), icon = info and info.icon or 134400,
-                order = (info and info.order or 50) + (info and info.gather and 100 or 0),
+                order = info and info.order or 50,
                 countText = state.mode == "members" and tostring(p.count) or (p.recipeCount > 0 and tostring(p.recipeCount) or tostring(p.count)),
                 tip = L.CRAFT_PROF_TIP:format(p.count, p.recipeCount) }
         end
-        table.sort(list, function(a, b) return a.order < b.order end)
-        for _, r in ipairs(list) do rows[#rows + 1] = r end
+        for _, sec in ipairs(SECTIONS) do
+            local list = groups[sec.key]
+            if #list > 0 then
+                table.sort(list, function(a, b) return a.order < b.order end)
+                rows[#rows + 1] = { key = "sec:" .. sec.key, name = sec.name, section = true }
+                for _, r in ipairs(list) do rows[#rows + 1] = r end
+            end
+        end
         return rows
     end
 
@@ -502,14 +564,7 @@ function Page.Build(parent)
         tree:SetRows(rows)
         local count = 0
         for _, r in ipairs(rows) do if r.kind == "recipe" then count = count + 1 end end
-        if state.search ~= "" then
-            title:SetText(L.CRAFT_SEARCH_TITLE:format(state.search))
-        elseif state.prof == FAV then
-            title:SetText(L.CRAFT_FAVORITES)
-        else
-            title:SetText(Crafts.ProfName(state.prof))
-        end
-        sub:SetText(L.CRAFT_COUNT:format(count))
+        f.SetHead(count)
         if state.search ~= "" then tree:SetEmptyText(L.CRAFT_NOTHING_FOUND:format(ns.Database.Settings().craft.prefix or "!lg"))
         elseif state.prof == FAV then tree:SetEmptyText(L.CRAFT_NO_FAVS)
         elseif Crafts.ProfInfo(state.prof) and Crafts.ProfInfo(state.prof).gather then tree:SetEmptyText(L.CRAFT_GATHER_ONLY)
@@ -569,6 +624,27 @@ function Page.Build(parent)
         dEmpty:SetShown(#recipeRows == 0)
     end
 
+    -- header: icon, name and count of what the list shows
+    function f.SetHead(count)
+        local info = state.prof ~= FAV and Crafts.ProfInfo(state.prof) or nil
+        if state.search ~= "" then
+            headIcon:SetTexture(Theme.Icon("search", 32)); headIcon:SetTexCoord(0, 1, 0, 1)
+            title:SetText(ns.Upper(L.CRAFT_SEARCH_TITLE:format(state.search)))
+        elseif state.prof == FAV then
+            headIcon:SetTexture(Theme.Icon("star-filled", 32)); headIcon:SetTexCoord(0, 1, 0, 1)
+            title:SetText(ns.Upper(L.CRAFT_FAVORITES))
+        else
+            headIcon:SetTexture(info and info.icon or 134400); headIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            title:SetText(ns.Upper(Crafts.ProfName(state.prof)))
+        end
+        if count then
+            sub:SetText(L.CRAFT_COUNT_HEAD:format(count))
+        else
+            local p = Crafts.Index().profs[state.prof]
+            sub:SetText(p and L.CRAFT_N_CHARS:format(p.count) or "")
+        end
+    end
+
     function f.Refresh()
         for _, c in ipairs(checks) do c:Refresh() end
         expandAll:SetText(state.expandAll and L.CRAFT_COLLAPSE_ALL or L.CRAFT_EXPAND_ALL)
@@ -583,11 +659,18 @@ function Page.Build(parent)
             state.prof = best or FAV
         end
         profList:SetRows(profRows(idx))
-        mode:Refresh()
+        -- tab look without firing onSelect again
+        mode.current = state.mode
+        for _, b in ipairs(mode.buttons) do
+            local on = b.key == state.mode
+            b.line:SetShown(on)
+            b.text:SetTextColor(Theme.Color(on and "text" or "muted"))
+        end
         onlineCheck:Refresh()
+        guildTitle:SetText(ns.Upper((ns.Call(GetGuildInfo, "player")) or L.PAGE_PROFESSIONS))
         recipes:SetShown(state.mode == "recipes")
         members:SetShown(state.mode == "members")
-        if state.mode == "recipes" then refreshRecipes(idx) else refreshMembers(idx) end
+        if state.mode == "recipes" then refreshRecipes(idx) else refreshMembers(idx); f.SetHead() end
         local crafters, total, on = 0, 0, 0
         local seen = {}
         for _, p in pairs(idx.profs) do

@@ -236,7 +236,7 @@ local function styleOverlay(o, label, hint, icon)
             o.icon = o:CreateTexture(nil, "OVERLAY")
             o.icon:SetPoint("CENTER", 0, -6)
         end
-        o.icon:SetTexture(Theme.Icon(icon))
+        Theme.SetIcon(o.icon, icon)
         local size = math.max(10, math.min(22, (o:GetHeight() or 40) - 22))
         o.icon:SetSize(size, size)
         o.icon:SetShown((o:GetHeight() or 0) >= 34)
@@ -459,7 +459,7 @@ local locks = {}   -- [key] = { button, cover, unlocked }
 
 local function paintLock(l)
     local r, g, b = Theme.Color("accent")
-    l.button.icon:SetTexture(Theme.Icon(l.unlocked and "lock-open" or "lock"))
+    Theme.SetIcon(l.button.icon, l.unlocked and "lock-open" or "lock")
     if l.unlocked then
         l.button.icon:SetVertexColor(r, g, b)
         l.cover:SetBackdropColor(r, g, b, 0.22)

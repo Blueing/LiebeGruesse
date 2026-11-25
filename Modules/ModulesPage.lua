@@ -22,66 +22,72 @@ local function apply()
     ns.Fire("LG_MODULES")
 end
 
--- A card: icon, name, description, switch on the right
-local function card(parent, icon, title, text, get, set)
-    local c = CreateFrame("Button", nil, parent)
-    c.bg = UI.Fill(c, "panel", "BACKGROUND")
-    c.bg:SetAllPoints()
-    c.bar = UI.Fill(c, "accent", "ARTWORK")
-    c.bar:SetPoint("TOPLEFT"); c.bar:SetPoint("BOTTOMLEFT"); c.bar:SetWidth(2)
-    c.icon = UI.Icon(c, icon, 18, "accent")
-    c.icon:SetPoint("TOPLEFT", 14, -12)
-    c.title = UI.Text(c, 13, "text")
-    c.title:SetPoint("TOPLEFT", c.icon, "TOPRIGHT", 10, 1)
-    c.title:SetText(title)
-    c.text = UI.Text(c, 11, "muted")
-    c.text:SetPoint("TOPLEFT", c.title, "BOTTOMLEFT", 0, -4)
-    c.text:SetPoint("RIGHT", c, "RIGHT", -60, 0)
-    c.text:SetWordWrap(true)
-    c.text:SetJustifyV("TOP")
-    c.text:SetText(text)
-    c.toggle = UI.Toggle(c, get, function(v) set(v); c:Refresh() end)
-    c.toggle:SetPoint("TOPRIGHT", -14, -14)
-    c:SetScript("OnClick", function() c.toggle:Click() end)
-    function c:Refresh()
-        self.toggle:Refresh()
-        local on = get()
-        self.bar:SetShown(on)
-        self.title:SetTextColor(Theme.Color(on and "text" or "muted"))
-        self.icon:SetVertexColor(Theme.Color(on and "accent" or "muted"))
-    end
-    c.control = c
-    c.searchTitle, c.searchText = title, title .. " " .. (text or "")
-    function c:Highlight(q)
-        self.title:SetText(q and ns.Highlight(title, q) or title)
-        self.text:SetText(q and ns.Highlight(text, q) or text)
-    end
-    return c
-end
-
 UI.AddPage("modules", L.PAGE_MODULES, 89, function(content, page)
     local form = UI.Form(content)
     page.Search = function(text) return form:Filter(text) end
     page.SearchEnter = function() form:JumpFirst() end
-    page.searchRow = true
+    page.head = L.HEAD_MODULES
     form.scroll:SetPoint("TOPLEFT")
     form.scroll:SetPoint("BOTTOMRIGHT", -8, 0)
+    local st = settings()
+    local function isOn(key) return function() return st.modules[key] ~= false end end
 
-    local mods = form:Section(L.SET_MODULES)
-    mods:Note(L.MODULES_HINT, { col = 0, height = 30 })
-    for i, m in ipairs(MODULES) do
-        local c = card(form.body, m.icon, L["PAGE_" .. m.key:upper()] or m.key, L["MOD_" .. m.key:upper() .. "_TEXT"] or "",
-            function() return settings().modules[m.key] ~= false end,
-            function(v) settings().modules[m.key] = v; apply() end)
-        mods:Custom(c, 62, { col = (i % 2 == 1) and 1 or 2 })
+    -- every module: icon, name, switch (two columns); what it does in the tooltip
+    local mods = form:Section(L.SET_MODULES, { wide = true, grid = true })
+    for _, m in ipairs(MODULES) do
+        local name = L["PAGE_" .. m.key:upper()] or m.key
+        local _, row = mods:Toggle(name, isOn(m.key), function(v) st.modules[m.key] = v; apply() end,
+            { tip = L["MOD_" .. m.key:upper() .. "_TEXT"] })
+        row.icon = UI.Icon(row, m.icon, 16, "accent")
+        row.icon:SetPoint("LEFT", 16, 0)
+        row.label:SetPoint("LEFT", 42, 0)
+        row.searchText = L["MOD_" .. m.key:upper() .. "_TEXT"] or ""
     end
-    mods:Toggle(L.SET_COUNCIL_ONLY, function() return settings().modules.councilOnlyMembers end, function(v)
-        settings().modules.councilOnlyMembers = v
+
+    -- the features of each module ("submodules"); a card only while its module is on
+    local feed = form:Section(L.PAGE_FEED, { show = isOn("feed") })
+    feed:Toggle(L.SET_TOASTS, function() return st.toasts end, function(v) st.toasts = v end, { tip = L.SET_TOASTS_TIP })
+    feed:Buttons({ { L.PAGE_NOTIFY, function() ns.Window.Show("notifications") end, width = 170, icon = "newspaper" } })
+
+    local prof = form:Section(L.PAGE_PROFESSIONS, { show = isOn("professions") })
+    prof:Toggle(L.SET_CRAFT_ANSWER, function() return st.craft.answer end, function(v) st.craft.answer = v end,
+        { tip = L.SET_CRAFT_ANSWER_TIP .. "\n\n" .. L.SET_CRAFT_HINT })
+    prof:Edit(L.SET_CRAFT_PREFIX, function() return st.craft.prefix end, function(v)
+        if v ~= "" then st.craft.prefix = v end
+    end, { width = 120 })
+    prof:Toggle(L.SET_PSYNC_CHAT, function() return ns.ProfSync.Settings().profSyncChat end,
+        function(v) ns.ProfSync.Settings().profSyncChat = v end, { tip = L.SET_PSYNC_CHAT_TIP })
+    prof:Toggle(L.SET_PSYNC_HINT, function() return ns.ProfSync.Settings().profSyncHint ~= false end,
+        function(v) ns.ProfSync.Settings().profSyncHint = v end, { tip = L.SET_PSYNC_HINT_TIP })
+    prof:Buttons({ { L.PSYNC_SHOW, function()
+        if #ns.ProfSync.All() == 0 then ns.Print(L.PSYNC_NONE) else ns.ProfSync.Show() end
+    end, width = 180, icon = "scroll-text" } })
+
+    local council = form:Section(L.PAGE_COUNCIL, { show = isOn("council") })
+    council:Toggle(L.LC_AUTOPASS, function() return st.lcAutoPass end, function(v) st.lcAutoPass = v end, { tip = L.LC_AUTOPASS_TIP })
+    council:Toggle(L.SET_COUNCIL_ONLY, function() return st.modules.councilOnlyMembers end, function(v)
+        st.modules.councilOnlyMembers = v
         apply()
-    end, { col = 0, tip = L.SET_COUNCIL_ONLY_TIP, show = function() return settings().modules.council ~= false end })
+    end, { tip = L.SET_COUNCIL_ONLY_TIP })
+
+    local bless = form:Section(L.PAGE_BLESSINGS, { show = isOn("blessings") })
+    local function bo() return ns.Blessings.Settings() end
+    local function barUpdate() if ns.BlessingsBar then ns.BlessingsBar.Update() end end
+    bless:Toggle(L.BLESS_SHOW_BAR, function() return bo().bar end, function(v) bo().bar = v; barUpdate() end, { tip = L.BLESS_SHOW_BAR_TIP })
+    bless:Toggle(L.BLESS_RAID_ONLY, function() return bo().raidOnly end, function(v) bo().raidOnly = v; barUpdate() end)
+    bless:Toggle(L.BLESS_SOLO, function() return bo().solo end, function(v) bo().solo = v; barUpdate() end, { tip = L.BLESS_SOLO_TIP })
+    bless:Toggle(L.BLESS_FREE, function() return bo().freeAssign end, function(v) bo().freeAssign = v; ns.Blessings.Share(ns.Blessings.Me()) end,
+        { tip = L.BLESS_FREE_TIP })
+    bless:Toggle(L.BLESS_PP_READ, function() return bo().ppRead end, function(v) bo().ppRead = v; if v then ns.Blessings.Request() end end,
+        { tip = L.BLESS_PP_READ_TIP })
+    bless:Toggle(L.BLESS_PP_SYNC, function() return bo().ppSync end, function(v) bo().ppSync = v; if v then ns.Blessings.Share(ns.Blessings.Me()) end end,
+        { tip = L.BLESS_PP_SYNC_TIP })
+
+    local greet = form:Section(L.SET_GREET, { show = isOn("greet") })
+    greet:Note(L.SET_GREET_HINT, { height = 34 })
 
     -- single cooldown displays
-    local displays = form:Section(L.MOD_DISPLAYS)
+    local displays = form:Section(L.MOD_DISPLAYS, { show = isOn("cooldowns") })
     displays:Note(L.MOD_DISPLAYS_HINT, { col = 0, height = 20 })
     local rows = {}
     local holder = CreateFrame("Frame", nil, form.body)

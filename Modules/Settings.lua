@@ -15,64 +15,40 @@ UI.AddPage("general", L.PAGE_GENERAL, 90, function(content, page)
     local form = UI.Form(content)
     page.Search = function(text) return form:Filter(text) end
     page.SearchEnter = function() form:JumpFirst() end
-    page.searchRow = true
+    page.head = L.HEAD_GENERAL
     form.scroll:SetPoint("TOPLEFT")
     form.scroll:SetPoint("BOTTOMRIGHT", -8, 0)
 
-    local s = form:Section(L.SETTINGS_GENERAL)
+    local s = form:Section(L.SET_INTERFACE)
     s:Toggle(L.SET_MINIMAP, function() return not settings.minimap.hide end,
         function(v) settings.minimap.hide = not v; UI.UpdateMinimap() end)
-    s:Toggle(L.SET_TOASTS, function() return settings.toasts end, function(v) settings.toasts = v end, { tip = L.SET_TOASTS_TIP })
-    s:Buttons({ { L.TIPS_OPEN, function() ns.Window.Show("tooltips") end, width = 200, icon = "message-circle" } }, { col = 2 })
     s:Toggle(L.WN_SETTING, function() return ns.WhatsNew.Settings().whatsNew end,
         function(v) ns.WhatsNew.Settings().whatsNew = v end, { tip = L.WN_SETTING_TIP })
-    s:Buttons({ { L.WN_OPEN, function() ns.WhatsNew.Show(nil, true) end, width = 200, icon = "scroll-text" } }, { col = 2 })
-    s:Edit(L.SET_MAIN_SHORT, function() return ns.Database.Char().main end, function(v)
+    s:Buttons({ { L.WN_OPEN, function() ns.WhatsNew.Show(nil, true) end, width = 170, icon = "scroll-text" },
+        { L.PAGE_MODULES, function() ns.Window.Show("modules") end, width = 150, icon = "badge-check", tip = L.SET_MODULES_MOVED },
+        { L.TIPS_OPEN, function() ns.Window.Show("tooltips") end, width = 170, icon = "message-circle" } })
+
+    local chars = form:Section(L.SET_CHARACTERS)
+    chars:Edit(L.SET_MAIN_SHORT, function() return ns.Database.Char().main end, function(v)
         local old = ns.Database.Char().main
         ns.Database.Char().main = v ~= "" and v or nil
         if old ~= ns.Database.Char().main then ns.Profile.Update(true) end
-    end, { col = 2, placeholder = L.SET_MAIN_PLACEHOLDER, tip = L.SET_MAIN })
-    s:Toggle(L.SET_AUTO_ALTS, function() return ns.Account.Settings().autoAlts end,
+    end, { placeholder = L.SET_MAIN_PLACEHOLDER, tip = L.SET_MAIN })
+    chars:Toggle(L.SET_AUTO_ALTS, function() return ns.Account.Settings().autoAlts end,
         function(v) ns.Account.Settings().autoAlts = v; ns.Profile.Update(true) end, { tip = L.SET_AUTO_ALTS_TIP })
-    s:Edit(L.SET_HOME_GUILD, function() return ns.Account.Settings().homeGuild end, function(v)
+    chars:Edit(L.SET_HOME_GUILD, function() return ns.Account.Settings().homeGuild end, function(v)
         ns.Account.Settings().homeGuild = (v ~= "" and v) or "Liebe Grüße"
         ns.Profile.Update(true)
-    end, { col = 2, tip = L.SET_HOME_GUILD_TIP })
-    s:Note(L.SET_ACCOUNT_CHARS:format(#ns.Account.Alts() + 1, ns.Names.Display(ns.Account.Main() or ns.Names.Me())),
-        { col = 0, height = 26, show = function() return ns.Account.Settings().autoAlts end })
+    end, { tip = L.SET_HOME_GUILD_TIP })
+    chars:Note(L.SET_ACCOUNT_CHARS:format(#ns.Account.Alts() + 1, ns.Names.Display(ns.Account.Main() or ns.Names.Me())),
+        { height = 26, show = function() return ns.Account.Settings().autoAlts end })
 
-    s:Dropdown(L.ROLE_AUTO, function()
+    local group = form:Section(L.SET_GROUP)
+    group:Dropdown(L.ROLE_AUTO, function()
         return { { value = "auto", text = L.ROLE_FROM_TALENTS }, { value = "TANK", text = L.ROLE_TANK },
             { value = "HEALER", text = L.ROLE_HEALER }, { value = "DAMAGER", text = L.ROLE_DAMAGE }, { value = "off", text = L.OFF } }
     end, function() return ns.QoL.Setting() end, function(v) ns.Database.Char().role = v; ns.QoL.ApplyRole(true) end,
         { tip = L.ROLE_AUTO_TIP })
-    s:Toggle(L.LC_AUTOPASS, function() return settings.lcAutoPass end, function(v) settings.lcAutoPass = v end,
-        { col = 2, tip = L.LC_AUTOPASS_TIP })
-
-    local mods = form:Section(L.SET_MODULES)
-    mods:Note(L.SET_MODULES_MOVED, { col = 0 })
-    mods:Buttons({ { L.PAGE_MODULES, function() ns.Window.Show("modules") end, width = 180, icon = "badge-check" } }, { col = 0 })
-
-    local craft = form:Section(L.SET_CRAFT)
-    craft:Note(L.SET_CRAFT_HINT, { height = 34 })
-    craft:Toggle(L.SET_CRAFT_ANSWER, function() return settings.craft.answer end, function(v) settings.craft.answer = v end,
-        { tip = L.SET_CRAFT_ANSWER_TIP })
-    craft:Edit(L.SET_CRAFT_PREFIX, function() return settings.craft.prefix end, function(v)
-        if v ~= "" then settings.craft.prefix = v end
-    end, { col = 2, width = 120 })
-
-    craft:Toggle(L.SET_PSYNC_CHAT, function() return ns.ProfSync.Settings().profSyncChat end,
-        function(v) ns.ProfSync.Settings().profSyncChat = v end, { tip = L.SET_PSYNC_CHAT_TIP })
-    craft:Toggle(L.SET_PSYNC_HINT, function() return ns.ProfSync.Settings().profSyncHint ~= false end,
-        function(v) ns.ProfSync.Settings().profSyncHint = v end, { col = 2, tip = L.SET_PSYNC_HINT_TIP })
-    craft:Buttons({ { L.PSYNC_SHOW, function()
-        if #ns.ProfSync.All() == 0 then ns.Print(L.PSYNC_NONE) else ns.ProfSync.Show() end
-    end, width = 180, icon = "scroll-text" } }, { col = 0 })
-
-    local greet = form:Section(L.SET_GREET)
-    greet:Note(L.SET_GREET_HINT, { col = 0, height = 34 })
-    greet:Toggle(L.PAGE_GREET, function() return settings.modules.greet ~= false end,
-        function(v) settings.modules.greet = v end, { tip = L.MOD_GREET_TEXT })
 
     local share = form:Section(L.SET_SHARE)
     share:Note(L.SET_SHARE_HINT)
@@ -84,7 +60,7 @@ UI.AddPage("general", L.PAGE_GENERAL, 90, function(content, page)
     })
     share:Buttons({ { L.SHARE_IMPORT, function() ns.Share.ShowImport() end, width = 180, icon = "rotate-ccw" } })
 
-    local e = form:Section(L.SET_ENCHANTS)
+    local e = form:Section(L.SET_ENCHANTS, { grid = true, wide = true })
     e:Note(L.SET_ENCHANTS_HINT)
     local n = 0
     for _, slot in ipairs(Items.SLOTS) do
@@ -104,7 +80,7 @@ UI.AddPage("appearance", L.PAGE_APPEARANCE, 95, function(content, page)
     local form = UI.Form(content)
     page.Search = function(text) return form:Filter(text) end
     page.SearchEnter = function() form:JumpFirst() end
-    page.searchRow = true
+    page.head = L.HEAD_APPEARANCE
     form.scroll:SetPoint("TOPLEFT")
     form.scroll:SetPoint("BOTTOMRIGHT", -8, 0)
 
@@ -117,8 +93,8 @@ UI.AddPage("appearance", L.PAGE_APPEARANCE, 95, function(content, page)
     w:Dropdown(L.FONT, function() return Theme.Fonts() end, function() return theme.font end,
         function(v) theme.font = v; Theme.Apply() end)
     w:Segment(L.SET_FONT_WEIGHT, { { value = "normal", text = L.SET_WEIGHT_NORMAL }, { value = "strong", text = L.SET_WEIGHT_STRONG }, { value = "bold", text = L.SET_WEIGHT_BOLD } },
-        function() return theme.weight or "strong" end, function(v) theme.weight = v; theme.font = "Barlow"; Theme.Apply() end,   -- weights exist for Barlow only
-        { tip = L.SET_WEIGHT_TIP })
+        function() return theme.weight or "strong" end, function(v) theme.weight = v; Theme.Apply() end,   -- weights exist for Barlow only
+        { tip = L.SET_WEIGHT_TIP, show = function() return theme.font == "Barlow" or (theme.font == "Expressway" and not Theme.HasExpressway()) end })
     w:Slider(L.SET_FONT_SCALE, 0.8, 1.4, 0.05, function() return theme.fontScale end,
         function(v) theme.fontScale = v; ns.Debounce("theme-apply", 0.25, Theme.Apply) end,
         { col = 2, fmt = function(v) return ("%d%%"):format(v * 100 + 0.5) end })

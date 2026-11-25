@@ -148,25 +148,55 @@ local function visibleUnit(key)
     end
 end
 Armory.VisibleUnit = visibleUnit
+-- the member's group unit (raid/party), visible or not; never "player"
+function Armory.GroupUnit(key)
+    local unit = ns.UnitForKey(key)
+    if unit and unit ~= "player" and ns.Call(UnitExists, unit) then return unit end
+end
+
+-- the client's way to put a race on the model: SetCustomRace, or a setter
+-- with another name that some clients use
+function Armory.RaceSetter(model)
+    if not model then return nil end
+    if model.SetCustomRace then return model.SetCustomRace, "SetCustomRace" end
+    local mt = getmetatable(model)
+    local idx = mt and mt.__index
+    if type(idx) == "table" then
+        for name, fn in pairs(idx) do
+            if type(name) == "string" and type(fn) == "function" and name:match("^Set") and name:find("Race") then return fn, name end
+        end
+    end
+end
 
 local function makeModel(parent)
     local box = UI.Panel(parent, "input", "borderDim")
+    -- picture shown until the model is known: spec icon in a bronze ring,
+    -- race and class below, a short hint at the bottom
+    local art = CreateFrame("Frame", nil, box)
+    art:SetAllPoints()
+    box.art = art
+    -- the same icon as the portrait in the header, same size and frame
+    art.frame = CreateFrame("Frame", nil, art)
+    art.frame:SetSize(84, 84)
+    art.frame:SetPoint("CENTER", 0, 24)
+    art.icon = art.frame:CreateTexture(nil, "ARTWORK")
+    art.icon:SetPoint("TOPLEFT", 6, -6)
+    art.icon:SetPoint("BOTTOMRIGHT", -6, 6)
+    UI.Corners(art.frame, 10)
+    art.title = UI.Text(art, 13, "text", "CENTER", nil, true)
+    art.title:SetPoint("TOP", art.frame, "BOTTOM", 0, -8)
+    art:SetScript("OnSizeChanged", function(_, w) if w and w > 20 then art.title:SetWidth(w - 12) end end)
+    art.title:SetWordWrap(false)
+    art:Hide()
+    box.hint = UI.Text(box, 10, "muted", "CENTER")
+    box.hint:SetPoint("BOTTOMLEFT", 6, 8)
+    box.hint:SetPoint("BOTTOMRIGHT", -6, 8)
+    box.hint:SetWordWrap(true)
     local ok, model = pcall(CreateFrame, "DressUpModel", nil, box)
     if not ok or not model then return box end
     model:SetPoint("TOPLEFT", 1, -1)
     model:SetPoint("BOTTOMRIGHT", -1, 1)
     box.model = model
-    box.hint = UI.Text(box, 10, "muted", "CENTER")
-    box.hint:SetPoint("BOTTOMLEFT", 4, 6)
-    box.hint:SetPoint("BOTTOMRIGHT", -4, 6)
-    box.hint:SetWordWrap(true)
-    -- empty state (race unknown): the guild logo, faint
-    box.empty = box:CreateTexture(nil, "ARTWORK")
-    box.empty:SetTexture(ns.media .. "logo")
-    box.empty:SetSize(96, 96)
-    box.empty:SetPoint("CENTER", 0, 12)
-    box.empty:SetAlpha(0.12)
-    box.empty:Hide()
     -- drag to turn (the update script only runs while dragging)
     model:EnableMouse(true)
     local rot = 0
@@ -186,8 +216,18 @@ local function makeModel(parent)
     function box:Load(key, gear, force, m)
         local unit = visibleUnit(key)
         local real = unit ~= nil
+        -- went out of sight while open: keep the real model on screen
+        if not real and (box.mode == "real" or box.mode == "kept") and box.realKey == key then
+            box.mode = "kept"
+            return
+        end
+        box.realKey = real and key or nil
+        -- a group member out of sight: the game may still know their look
+        -- from earlier in this session
+        local cached = not real and Armory.GroupUnit(key) or nil
         local race, sex = Armory.RaceID(m), Armory.ModelSex(m)
-        local parts = { tostring(key), tostring(real), tostring(unit) }
+        box.member, box.memberKey = m, key
+        local parts = { tostring(key), tostring(real), tostring(unit), tostring(cached), tostring(m and m.c), tostring(m and m.tp) }
         if not real then
             parts[#parts + 1] = tostring(race) .. "/" .. tostring(sex)
             for slot = 1, 19 do parts[#parts + 1] = gear and gear[slot] and tostring(gear[slot]) or "" end
@@ -198,7 +238,7 @@ local function makeModel(parent)
         rot = 0
         box.gear, box.tries = (not real) and gear or nil, 0
         box.unit = unit
-        box.pendingRace, box.reveal = nil, nil
+        box.pendingRace, box.reveal, box.cacheWait = nil, nil, nil
         pcall(function()
             if real then
                 box.race = nil
@@ -207,44 +247,78 @@ local function makeModel(parent)
                 if model.Dress then model:Dress() end
                 box.hint:SetText("")
                 box.mode = "real"
-            elseif race and model.SetCustomRace then
-                -- the member's race, gender and gear (the face/hair of others
-                -- is only known to the game while they are in sight). Never
-                -- your own character: it is not who you clicked.
-                box.race, box.sex, box.raceTries = race, sex or 0, 0
+            elseif cached then
+                -- the picture stays until the model has loaded
+                -- (OnModelLoaded); nothing after 1.5 s: picture only
+                box.race = nil
+                box.Art()
+                box.cacheWait = true
+                box.mode = "cached"
                 if model.ClearModel then model:ClearModel() end
-                local ok = pcall(model.SetCustomRace, model, race, sex or 0)
-                if ok then
-                    box.Reveal(true)
-                    box:TryGear()
-                    box.mode = "race"
-                else
-                    -- some clients need a loaded model before the race can be
-                    -- set: load a base model hidden, set the race once it has
-                    -- loaded and only then show it (OnModelLoaded)
-                    box.Reveal(false)
-                    box.pendingRace = true
-                    model:SetUnit("player")
-                    box.mode = "race-late"
-                end
-                box.hint:SetText(L.ARM_MODEL_RACE)
+                model:SetUnit(cached)
+                if model.Dress then model:Dress() end
+                ns.After(1.5, function()
+                    if loaded == sig and box.mode == "cached" and box.cacheWait then
+                        box.cacheWait = nil
+                        pcall(box.Preview, race, sex)
+                    end
+                end)
             else
-                box.Empty()
+                box.Preview(race, sex)
             end
             if model.SetFacing then model:SetFacing(0) end
         end)
     end
-    -- no race known (profile from a very old version): no model at all
-    function box.Empty()
-        box.race, box.pendingRace, box.gear = nil, nil, nil
-        if model.ClearModel then pcall(model.ClearModel, model) end
-        box.Reveal(false)
-        box.hint:SetText(L.ARM_MODEL_NONE)
-        box.mode = "none"
+    -- without a model from the game: race preview where the client can set
+    -- a race, otherwise the picture
+    function box.Preview(race, sex)
+        if race and Armory.RaceSetter(model) then
+            -- the member's race, gender and gear (the face/hair of others
+            -- is only known to the game while they are in sight). Never
+            -- your own character: it is not who you clicked.
+            box.setRace = Armory.RaceSetter(model)
+            box.race, box.sex, box.raceTries = race, sex or 0, 0
+            if model.ClearModel then model:ClearModel() end
+            local ok = pcall(box.setRace, model, race, sex or 0)
+            if ok then
+                box.Reveal(true)
+                box:TryGear()
+                box.mode = "race"
+            else
+                -- some clients need a loaded model before the race can be
+                -- set: load a base model hidden, set the race once it has
+                -- loaded and only then show it (OnModelLoaded)
+                box.Art()
+                box.pendingRace = true
+                model:SetUnit("player")
+                box.mode = "race-late"
+            end
+            box.hint:SetText(L.ARM_MODEL_RACE)
+        else
+            box.race = nil
+            if model.ClearModel then pcall(model.ClearModel, model) end
+            box.Art()
+            box.mode = "art"
+        end
+    end
+    -- the picture: spec (or class) icon, race and class, hint
+    function box.Art()
+        local m = box.member or {}
+        model:SetAlpha(0)
+        if not ns.SetSpecIcon(art.icon, m.c, ns.SpecPoints(m)) then art.icon:SetTexture(nil) end
+        local class = m.c and (LOCALIZED_CLASS_NAMES_FEMALE and m.sx == 3 and LOCALIZED_CLASS_NAMES_FEMALE[m.c]
+            or LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[m.c]) or m.c
+        local words = {}
+        if m.r and m.r ~= "" then words[#words + 1] = m.r end
+        if class then words[#words + 1] = ns.ClassHex and ("|c%s%s|r"):format(ns.ClassHex(m.c), class) or class end
+        art.title:SetText(table.concat(words, " "))
+        local name = box.memberKey and Names.Display(m.name or box.memberKey) or "?"
+        box.hint:SetText(L.ARM_MODEL_ART:format(name))
+        art:Show()
     end
     function box.Reveal(on)
         model:SetAlpha(on and 1 or 0)
-        box.empty:SetShown(not on)
+        art:SetShown(not on)
         box.reveal = nil
     end
     -- the preview: undress and put the member's gear on; repeated when the
@@ -260,10 +334,22 @@ local function makeModel(parent)
         end
     end
     model:SetScript("OnModelLoaded", function()
+        -- the remembered look has loaded (file id 0 = the game knew nothing)
+        if box.mode == "cached" and box.cacheWait then
+            local okId, id = pcall(function() return model.GetModelFileID and model:GetModelFileID() end)
+            box.cacheWait = nil
+            if okId and id == 0 then return end
+            box.hint:SetText(L.ARM_MODEL_CACHED)
+            box.Reveal(true)
+            return
+        end
         -- the hidden base model has loaded: now set the member's race
         if box.pendingRace then
             box.pendingRace = nil
-            if not pcall(model.SetCustomRace, model, box.race, box.sex or 0) then box.Empty(); return end
+            if not (box.setRace and pcall(box.setRace, model, box.race, box.sex or 0)) then
+                if model.ClearModel then pcall(model.ClearModel, model) end
+                box.Art(); box.mode = "art"; return
+            end
             box.raceTries = 1
             pcall(box.TryGear, box)
             -- show it with the next load (race change) or shortly after
@@ -276,7 +362,7 @@ local function makeModel(parent)
         -- some clients drop the custom race when the first model load ends: set it once more
         if box.race and (box.raceTries or 0) < 1 then
             box.raceTries = (box.raceTries or 0) + 1
-            pcall(model.SetCustomRace, model, box.race, box.sex or 0)
+            if box.setRace then pcall(box.setRace, model, box.race, box.sex or 0) end
         end
         if box.gear and (box.tries or 0) < 3 then box.tries = (box.tries or 0) + 1; pcall(box.TryGear, box) end
     end)
@@ -780,8 +866,15 @@ function Armory.ModelReport()
     ns.Print(L.TEST_TAG .. (" %s: version %s, profile %s"):format(Names.Display(key), tostring(m.v), m.t and ns.Ago(m.t) or "-"))
     ns.Print(L.TEST_TAG .. (" race file %s, race id %s, sex %s -> model race %s, gender %s"):format(tostring(m.rf), tostring(m.ri),
         tostring(m.sx), tostring(Armory.RaceID(m)), tostring(Armory.ModelSex(m))))
-    ns.Print(L.TEST_TAG .. (" in sight: %s, mode: %s, SetCustomRace: %s, ClearModel: %s"):format(tostring((visibleUnit(key))),
-        tostring(box and box.mode), tostring(model and model.SetCustomRace ~= nil), tostring(model and model.ClearModel ~= nil)))
+    local _, setterName = Armory.RaceSetter(model)
+    ns.Print(L.TEST_TAG .. (" in sight: %s, mode: %s, race setter: %s"):format(tostring((visibleUnit(key))),
+        tostring(box and box.mode), tostring(setterName or "none")))
+    if model then
+        local okId, id = pcall(function() return model.GetModelFileID and model:GetModelFileID() end)
+        ns.Print(L.TEST_TAG .. (" loaded file id: %s, group unit: %s"):format(okId and tostring(id) or "error",
+            tostring((Armory.GroupUnit(key)))))
+        ns.Print(L.TEST_TAG .. (" picture shown: %s"):format(tostring(box.art and box.art:IsShown() or false)))
+    end
 end
 
 -- the member became your target/focus: show the real model

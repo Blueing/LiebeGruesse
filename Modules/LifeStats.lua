@@ -588,7 +588,7 @@ function Life.BuildSheet(parent)
                 n = n + 1
                 local c = card(n)
                 c.title:SetText(ns.Highlight(ns.Upper(sec.title), q))
-                c.icon:SetTexture(Theme.Icon(sec.icon))
+                Theme.SetIcon(c.icon, sec.icon)
                 for j, key in ipairs(lines) do
                     local r = row(c, j)
                     r:ClearAllPoints()
@@ -611,7 +611,7 @@ function Life.BuildSheet(parent)
         n = n + 1
         local c = card(n)
         c.title:SetText(ns.Upper(L.LIFE_SEC_DUNGEONS))
-        c.icon:SetTexture(Theme.Icon("crown"))
+        Theme.SetIcon(c.icon, "crown")
         local j = 0
         local groups = { { title = L.LIFE_CLASSIC, list = {} }, { title = L.LIFE_NEW_FOREVER, list = {} }, { title = L.LIFE_RAIDS, list = {} } }
         for _, d in ipairs(Life.DUNGEONS) do

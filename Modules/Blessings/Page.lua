@@ -60,7 +60,7 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
 
     local scroll, body = UI.ScrollArea(content)
     scroll:SetPoint("TOPLEFT", 0, -100)
-    scroll:SetPoint("BOTTOMRIGHT", -6, 40)
+    scroll:SetPoint("BOTTOMRIGHT", -6, 64)
 
     -- settings line at the bottom
     local o = B.Settings()
@@ -72,6 +72,14 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
     soloCheck:SetPoint("LEFT", raidCheck, "RIGHT", 18, 0)
     local freeCheck = UI.Check(content, L.BLESS_FREE, function() return o.freeAssign end, function(v) o.freeAssign = v; B.Share(B.Me()) end, L.BLESS_FREE_TIP)
     freeCheck:SetPoint("LEFT", soloCheck, "RIGHT", 18, 0)
+    -- PallyPower: guests without this addon (read) and sending to them (sync)
+    -- (second row, above the others)
+    local ppRead = UI.Check(content, L.BLESS_PP_READ, function() return o.ppRead end,
+        function(v) o.ppRead = v; if v then B.Request() end end, L.BLESS_PP_READ_TIP)
+    ppRead:SetPoint("BOTTOMLEFT", 0, 32)
+    local ppSync = UI.Check(content, L.BLESS_PP_SYNC, function() return o.ppSync end,
+        function(v) o.ppSync = v; if v then B.Share(B.Me()) end end, L.BLESS_PP_SYNC_TIP)
+    ppSync:SetPoint("LEFT", ppRead, "RIGHT", 18, 0)
 
     -- grid pieces are created on demand and reused
     local headCells, rowsUI, missUI = {}, {}, {}
@@ -235,7 +243,7 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
             ns.SetClassIcon(r.icon, "PALADIN")
             r.name:SetText(ns.Highlight(ns.ColorName(p.name or p.key, "PALADIN"), q))
             r.sub:SetText(p.me and Theme.HexColor("accent", L.BLESS_YOU) or (p.addon == "lg" and L.BLESS_ADDON)
-                or (p.addon == "pp" and "PallyPower") or Theme.HexColor("muted", L.BLESS_NO_ADDON))
+                or (p.addon == "pp" and L.BLESS_PP_GUEST) or Theme.HexColor("muted", L.BLESS_NO_ADDON))
             for c, class in ipairs(classes) do
                 local cl = cell(r, c)
                 cl:ClearAllPoints()

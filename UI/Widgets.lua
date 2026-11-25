@@ -47,7 +47,7 @@ end
 -- Icon texture from Media\Icons, tinted with a color role
 function UI.Icon(parent, name, size, color, layer)
     local t = parent:CreateTexture(nil, layer or "ARTWORK")
-    t:SetTexture(Theme.Icon(name))
+    t:SetTexture(Theme.Icon(name, size or 14))
     t:SetSize(size or 14, size or 14)
     t:SetVertexColor(Theme.Color(color or "textDim"))
     if color then Theme.RegisterFill(t, color) end
@@ -71,7 +71,8 @@ local GLYPH_PATH = "Interface\\AddOns\\LiebeGruesse\\Media\\Icons\\"
 function UI.Glyph(name, role, size)
     local r, g, b = Theme.Color(role or "textDim")
     size = size or 14
-    return ("|T%s%s.tga:%d:%d:0:0:64:64:0:64:0:64:%d:%d:%d|t"):format(GLYPH_PATH, name, size, size,
+    local path, dim = Theme.IconFile(name, size)
+    return ("|T%s.tga:%d:%d:0:0:%d:%d:0:%d:0:%d:%d:%d:%d|t"):format(path, size, size, dim, dim, dim, dim,
         math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
 end
 
@@ -281,7 +282,7 @@ function UI.Empty(parent, width)
     e.hint:SetWidth(width or 380)
     e.hint:SetWordWrap(true)
     function e:Set(icon, text, hint)
-        self.icon:SetTexture(Theme.Icon(icon or "dot"))
+        Theme.SetIcon(self.icon, icon or "dot")
         self.text:SetText(text or "")
         self.hint:SetText(hint or "")
         self.hint:SetShown((hint or "") ~= "")
@@ -1088,7 +1089,7 @@ end
 -- Layout: every section is a card – accent title with a chevron on
 -- the right, rows separated by thin lines, label left, control right. Cards flow
 -- into two columns when there is room; sections with custom content span both.
-local ROW_H, ROW_GAP, CONTROL_W, HEAD_H, CARD_GAP = 38, 4, 180, 40, 12
+local ROW_H, ROW_GAP, CONTROL_W, HEAD_H, CARD_GAP = 36, 4, 180, 40, 12
 
 -- every form, with the page it was built on (settings search)
 UI.forms = {}
@@ -1104,49 +1105,51 @@ function UI.Form(parent)
         row:SetFrameLevel(body:GetFrameLevel() + 3)
         row.opts = opts
         row.labelText = label
+        row.hover = UI.Fill(row, "hover", "BACKGROUND")
+        row.hover:SetPoint("TOPLEFT", 1, 0); row.hover:SetPoint("BOTTOMRIGHT", -1, 0)
+        row.hover:Hide()
+        row:SetScript("OnEnter", function(self) self.hover:Show() end)
+        row:SetScript("OnLeave", function(self) self.hover:Hide() end)
         if label then
             row.label = UI.Text(row, 12, "text")
-            row.label:SetPoint("LEFT", 14, 0)
+            row.label:SetPoint("LEFT", 16, 0)
             row.label:SetPoint("RIGHT", row, "RIGHT", -(opts.labelRight or (CONTROL_W + 24)), 0)
             row.label:SetText(label)
         end
+        row:EnableMouse(true)
         if opts.tip then
-            row:EnableMouse(true)
-            row:SetScript("OnEnter", function(self) UI.Tooltip(self, label, { opts.tip }) end)
-            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            row:SetScript("OnEnter", function(self) self.hover:Show(); UI.Tooltip(self, label, { opts.tip }) end)
+            row:SetScript("OnLeave", function(self) self.hover:Hide(); GameTooltip:Hide() end)
         end
         return row
     end
 
     function form:Section(title, opts)
         opts = opts or {}
-        local section = { rows = {}, collapsed = opts.collapsed or false, wide = opts.wide, title = title or "" }
+        local section = { rows = {}, collapsed = opts.collapsed or false, wide = opts.wide, grid = opts.grid,
+            show = opts.show, title = title or "" }
         section.card = UI.Panel(body, "panel", "borderDim")
         section.card:SetFrameLevel(body:GetFrameLevel() + 1)
-        UI.Corners(section.card)
         local head = CreateFrame("Button", nil, body)
         head:SetFrameLevel(body:GetFrameLevel() + 3)
         head:SetHeight(HEAD_H)
-        -- engraved heading: bronze diamond, upper-case title, thin rule up to the chevron
-        head.diamond = UI.Fill(head, "bronze", "ARTWORK")
-        head.diamond:SetSize(6, 6)
-        head.diamond:SetPoint("LEFT", 16, 0)
-        if head.diamond.SetRotation then head.diamond:SetRotation(math.rad(45)) end
-        head.text = UI.Text(head, 14, "text", nil, nil, true)
-        head.text:SetPoint("LEFT", 30, 0)
-        head.text:SetText(ns.Upper(title or ""))
-        head.chevron = UI.Icon(head, "chevron-down", 11, "textDim")
+        -- heading: title in the accent color, chevron on the right, line below
+        head.text = UI.Text(head, 13, "accent", nil, nil, true)
+        head.text:SetPoint("LEFT", 16, 0)
+        head.text:SetText(title or "")
+        head.chevron = UI.Icon(head, "chevron-down", 12, "muted")
         head.chevron:SetPoint("RIGHT", -14, 0)
-        head.rule = UI.Fill(head, "borderDim", "ARTWORK")
-        head.rule:SetHeight(1)
-        head.rule:SetPoint("LEFT", head.text, "RIGHT", 10, 0)
-        head.rule:SetPoint("RIGHT", head.chevron, "LEFT", -10, 0)
+        head.hover = UI.Fill(head, "hover", "BACKGROUND")
+        head.hover:SetPoint("TOPLEFT", 1, -1); head.hover:SetPoint("BOTTOMRIGHT", -1, 0)
+        head.hover:Hide()
+        head:SetScript("OnEnter", function(self) self.hover:Show() end)
+        head:SetScript("OnLeave", function(self) self.hover:Hide() end)
         head.line = UI.Fill(head, "borderDim", "ARTWORK")
         head.line:SetHeight(1)
-        head.line:SetPoint("BOTTOMLEFT", 10, 0); head.line:SetPoint("BOTTOMRIGHT", -10, 0)
+        head.line:SetPoint("BOTTOMLEFT", 12, 0); head.line:SetPoint("BOTTOMRIGHT", -12, 0)
         head:SetScript("OnClick", function()
             section.collapsed = not section.collapsed
-            head.chevron:SetTexture(Theme.Icon(section.collapsed and "chevron-right" or "chevron-down"))
+            Theme.SetIcon(head.chevron, section.collapsed and "chevron-right" or "chevron-down")
             form:Layout()
         end)
         section.head = head
@@ -1158,7 +1161,7 @@ function UI.Form(parent)
             if not row.divider then
                 row.divider = UI.Fill(row, "borderDim", "ARTWORK")
                 row.divider:SetHeight(1)
-                row.divider:SetPoint("BOTTOMLEFT", 10, 0); row.divider:SetPoint("BOTTOMRIGHT", -10, 0)
+                row.divider:SetPoint("BOTTOMLEFT", 12, 0); row.divider:SetPoint("BOTTOMRIGHT", -12, 0)
             end
             section.rows[#section.rows + 1] = row
             return control, row
@@ -1290,8 +1293,9 @@ function UI.Form(parent)
                 row:SetShown(visible)
                 if visible then visibleRows[#visibleRows + 1] = row end
             end
-            -- a search hides cards without a match
-            local skip = filtering and #visibleRows == 0
+            -- a search hides cards without a match; opts.show hides a whole card
+            local skip = (filtering and #visibleRows == 0) or (section.show and not section.show())
+            if skip then for _, row in ipairs(section.rows) do row:Hide() end end
             section.card:SetShown(not skip)
             section.head:SetShown(not skip)
             if skip then section.skipped = true else section.skipped = nil end
@@ -1308,14 +1312,34 @@ function UI.Form(parent)
                     section.col = c
                 end
                 local inner = HEAD_H
-                for i, row in ipairs(visibleRows) do
-                    if row.Flow then row:Flow(w - 2) end
-                    row:ClearAllPoints()
-                    row:SetPoint("TOPLEFT", body, "TOPLEFT", x + 1, -(top + inner))
-                    row.layoutY = top + inner
-                    row:SetWidth(w - 2)
-                    if row.divider then row.divider:SetShown(i < #visibleRows) end
-                    inner = inner + row:GetHeight()
+                -- grid cards: rows with col 1/2 side by side when the card is wide enough
+                local gridded = section.grid and w >= 640
+                local half = math.floor((w - 2) / 2)
+                local i = 1
+                while i <= #visibleRows do
+                    local row = visibleRows[i]
+                    local nextRow = visibleRows[i + 1]
+                    if gridded and (row.opts.col or 1) ~= 0 and nextRow and (nextRow.opts.col or 1) ~= 0 then
+                        local h = math.max(row:GetHeight(), nextRow:GetHeight())
+                        for k, r in ipairs({ row, nextRow }) do
+                            r:ClearAllPoints()
+                            r:SetPoint("TOPLEFT", body, "TOPLEFT", x + 1 + (k - 1) * half, -(top + inner))
+                            r.layoutY = top + inner
+                            r:SetWidth(half)
+                            if r.divider then r.divider:SetShown(i + 1 < #visibleRows) end
+                        end
+                        inner = inner + h
+                        i = i + 2
+                    else
+                        if row.Flow then row:Flow(w - 2) end
+                        row:ClearAllPoints()
+                        row:SetPoint("TOPLEFT", body, "TOPLEFT", x + 1, -(top + inner))
+                        row.layoutY = top + inner
+                        row:SetWidth(w - 2)
+                        if row.divider then row.divider:SetShown(i < #visibleRows) end
+                        inner = inner + row:GetHeight()
+                        i = i + 1
+                    end
                 end
                 local h = inner + (#visibleRows > 0 and 4 or 0)
                 section.card:ClearAllPoints()
@@ -1380,7 +1404,7 @@ function UI.Form(parent)
         if not hit then return false end
         if hitSection.collapsed then
             hitSection.collapsed = false
-            hitSection.head.chevron:SetTexture(Theme.Icon("chevron-down"))
+            Theme.SetIcon(hitSection.head.chevron, "chevron-down")
         end
         self:Layout()
         local y = (hit == hitSection.card) and (hitSection.layoutY or 0) or (hit.layoutY or 0)
@@ -1434,7 +1458,7 @@ function UI.Form(parent)
         self.queryText = query
         local hits, first = 0, nil
         for _, section in ipairs(self.sections) do
-            local title = ns.Upper(section.title)
+            local title = section.title
             local whole = hq and ns.SearchMatch(section.title, q)
             section.head.text:SetText(hq and ns.Highlight(title, hq) or title)
             local any = whole
@@ -1466,7 +1490,7 @@ function UI.Form(parent)
             -- a closed card with a match opens
             if hq and any and section.collapsed then
                 section.collapsed = false
-                section.head.chevron:SetTexture(Theme.Icon("chevron-down"))
+                Theme.SetIcon(section.head.chevron, "chevron-down")
             end
         end
         self.hits, self.firstHit = hits, first

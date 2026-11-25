@@ -2,6 +2,39 @@
 
 All notable changes to Liebe Grüße – Guild Tools. Newest first.
 
+## [1.0.64] – 2026-11-25
+
+- style(settings): every settings page gets a head with icon, title, a line on what it is for and the search on the right
+- style(settings): cards with the title in the accent color and a chevron, rows with hover, two columns that become one in narrow windows
+- change(modules): the Modules page lists every module in two columns, below it one card per module with its features (feed, professions, loot council, blessings, greeting, cooldown displays)
+- change(general): sorted into Interface, Your characters, Group, Enchant check and Import / export
+- style(icons): every icon comes in 16, 32 and 64 px and the size that fits the screen is used – sharp instead of blurry
+- change(font): Expressway is the default font when an installed addon provides it, otherwise Barlow
+- change(armory): the picture in the model box is the same icon as the portrait in the header, same size and frame
+
+## [1.0.63] – 2026-11-25
+
+- change(armory): without a model from the game the box shows the spec picture in a bronze ring with race and class – the 3D model replaces it once the member is known (in sight or remembered from the group)
+- change(armory): the statue preview is gone
+- feat(roster): row tooltip with level, class, spec, rank, the known data (gear, talents, professions) with source and age, and where the member is
+- style(professions): guild crafting with the guild title, professions grouped into crafting, gathering and secondary, a header with icon and recipe count and the tabs Characters / Recipes
+- feat(professions): recipe rows show how many crafters are online and how many characters can craft it
+- feat(blessings): PallyPower guests – free assign (FREEASSIGN), real spell ranks, blessings this addon does not know stay untouched, a check request after assigning a guest
+- feat(blessings): options "Read PallyPower of guests" and "Sync with PallyPower"; nothing is sent while PallyPower runs on your own client
+
+## [1.0.62] – 2026-11-25
+
+- feat(armory): group members out of sight show the look the game remembers from earlier, before any preview
+- feat(armory): a member who leaves your sight keeps the real model while their armory stays open
+- style(armory): the race body preview is lit as a bronze statue (the client has no skin colours for it)
+- feat(test): /lg test model shows the group unit, the statue light and light, texture and item methods of the model
+
+## [1.0.61] – 2026-11-25
+
+- fix(armory): clients without SetCustomRace show the member's race body model instead of an empty box
+- fix(armory): the empty model box says when the game client can't show other members' models (no longer "race unknown")
+- feat(test): /lg test model lists the race setter, the loaded body source and the model and scene methods of the client
+
 ## [1.0.60] – 2026-11-25
 
 - fix(crafts): the recipe search lists the hits of all professions again, grouped by profession (as before 1.0.58)

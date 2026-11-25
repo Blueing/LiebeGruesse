@@ -88,7 +88,7 @@ function B.Settings()
     local s = ns.Database.Settings()
     s.blessings = s.blessings or {}
     local o = s.blessings
-    local d = { bar = true, raidOnly = false, solo = true, scale = 1, freeAssign = false }
+    local d = { bar = true, raidOnly = false, solo = true, scale = 1, freeAssign = false, ppRead = true, ppSync = true }
     for k, v in pairs(d) do if o[k] == nil then o[k] = v end end
     return o
 end
@@ -471,13 +471,47 @@ local PP = "PLPWR"
 local PP_CLASSES = { "WARRIOR", "ROGUE", "PRIEST", "DRUID", "PALADIN", "HUNTER", "MAGE", "WARLOCK", "SHAMAN" }
 local PP_BLESS = { ["1"] = "wisdom", ["2"] = "might", ["3"] = "kings" }
 local PP_DIGIT = { wisdom = "1", might = "2", kings = "3" }
+local PP_SKILLS = { "wisdom", "might", "kings" }   -- order of the skill pairs in SELF
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then ns.Call(C_ChatInfo.RegisterAddonMessagePrefix, PP) end
+local senderMayAssign   -- defined below
 
-local function ppSet(set)
-    local out = {}
-    for i, class in ipairs(PP_CLASSES) do out[i] = set and PP_DIGIT[set[class]] or "n" end
-    return table.concat(out)
+-- PallyPower runs on this client itself: it speaks for us, we only listen
+local function ppSelfLoaded()
+    local loaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+    return loaded and ns.Call(loaded, "PallyPower") and true or false
 end
+local function ppSend() return B.Settings().ppSync and not ppSelfLoaded() end
+local function ppRead() return B.Settings().ppRead end
+
+-- 9 class digits plus the unused tenth; blessings PallyPower has that this
+-- addon does not (digits 4–9) stay as they were
+local function ppSet(set, other)
+    local out = {}
+    for i, class in ipairs(PP_CLASSES) do
+        out[i] = (set and PP_DIGIT[set[class]]) or (other and other[class]) or "n"
+    end
+    return table.concat(out) .. "n"
+end
+-- reads 9 class digits: known blessings, other digits kept apart
+local function ppParse(text)
+    local set, other = {}, {}
+    for i, class in ipairs(PP_CLASSES) do
+        local c = text:sub(i, i)
+        if PP_BLESS[c] then set[class] = PP_BLESS[c] elseif c:find("^[4-9]$") then other[class] = c end
+    end
+    return set, other
+end
+-- own skills: highest known rank (hex) and a talent digit per blessing
+local function ppSkills()
+    local out = {}
+    for _, key in ipairs(PP_SKILLS) do
+        local id, rank = B.SpellFor(key, "single"), nil
+        for i, sid in ipairs(B.BY_KEY[key].single) do if sid == id then rank = i end end
+        out[#out + 1] = rank and ("%x0"):format(rank) or "nn"
+    end
+    return table.concat(out) .. "nnnnnn"
+end
+B.PPSet, B.PPParse, B.PPSkills = ppSet, ppParse, ppSkills
 
 function B.Share(p)
     if B.test then return end
@@ -488,16 +522,22 @@ function B.Share(p)
     local mine = Names.Same(p.key, me)
     Comm.Send("BL", { p = p.key, s = encode(p.set), c = mine and encodeSkills(p.can) or nil, f = mine and (B.Settings().freeAssign and 1 or nil) or nil },
         "GROUP", { priority = "normal" })
-    -- PallyPower users see it too
+    -- PallyPower users (guests without this addon) see it too
     local channel = ns.GroupChannel()
-    if channel then
+    if channel and ppSend() then
         if mine then
-            local skills = {}
-            for _, k in ipairs({ "wisdom", "might", "kings" }) do skills[#skills + 1] = (p.can and (p.can[k] or 0) > 0) and "40" or "nn" end
-            for _ = 1, 3 do skills[#skills + 1] = "nn" end
-            Comm.SendRaw(PP, "SELF " .. table.concat(skills) .. "@" .. ppSet(p.set), channel, { priority = "normal" })
-        else
-            Comm.SendRaw(PP, ("PASSIGN %s@%s"):format(p.name or Names.Display(p.key), ppSet(p.set)), channel, { priority = "normal" })
+            if not isPaladin() then return end
+            Comm.SendRaw(PP, "SELF " .. ppSkills() .. "@" .. ppSet(p.set), channel, { priority = "normal" })
+            Comm.SendRaw(PP, "FREEASSIGN " .. (B.Settings().freeAssign and "YES" or "NO"), channel, { priority = "normal" })
+        elseif senderMayAssign(me, p.key) then
+            Comm.SendRaw(PP, ("PASSIGN %s@%s"):format(p.name or Names.Display(p.key), ppSet(p.set, p.ppOther)), channel, { priority = "normal" })
+            -- a guest answers REQ with SELF: shows whether the change arrived
+            if p.addon == "pp" then
+                ns.Debounce("bless-pp-verify", 1.5, function()
+                    local ch = ns.GroupChannel()
+                    if ch and ppSend() then Comm.SendRaw(PP, "REQ", ch, { priority = "normal" }) end
+                end)
+            end
         end
     end
 end
@@ -506,10 +546,10 @@ function B.Request()
     if not IsInGroup() or not enabled() then return end
     Comm.Send("BLQ", {}, "GROUP", { priority = "normal" })
     local channel = ns.GroupChannel()
-    if channel then Comm.SendRaw(PP, "REQ", channel, { priority = "normal" }) end
+    if channel and (ppRead() or ppSend()) then Comm.SendRaw(PP, "REQ", channel, { priority = "normal" }) end
 end
 
-local function senderMayAssign(senderKey, targetKey)
+senderMayAssign = function(senderKey, targetKey)
     if Names.Same(senderKey, targetKey) then return true end
     local unit = ns.UnitForKey(senderKey)
     if unit and ns.IsGroupLead(unit) then return true end
@@ -517,7 +557,7 @@ local function senderMayAssign(senderKey, targetKey)
     return target ~= nil and target.free == true
 end
 
-local function apply(targetKey, set, can, free, via)
+local function apply(targetKey, set, can, free, via, other)
     B.Rebuild()
     local p = B.paladins[targetKey]
     if not p then return end
@@ -527,6 +567,7 @@ local function apply(targetKey, set, can, free, via)
         changed(p, true)
     else
         p.set = set
+        if via == "pp" then p.ppOther = other or {} end
         if can then p.can = can end
         if free ~= nil then p.free = free end
         p.addon = p.addon == "lg" and "lg" or via
@@ -555,32 +596,44 @@ local function hearPallyPower(text, senderKey)
     if Names.Same(senderKey, me) then return end
     B.Rebuild()
     if text == "REQ" then
-        if isPaladin() then ns.Debounce("bless-reply", 1 + math.random() * 2, function() B.Share(B.Me()) end) end
+        if isPaladin() and ppSend() then ns.Debounce("bless-reply", 1 + math.random() * 2, function() B.Share(B.Me()) end) end
         return
     end
-    local skills, set = text:match("^SELF ([0-9n]*)@([0-9n]*)")
+    if not ppRead() then return end
+    local free = text:match("^FREEASSIGN (%u+)")
+    if free then
+        local p = B.paladins[senderKey]
+        if p and p.addon ~= "lg" and (free == "YES" or free == "NO") then p.free = free == "YES" end
+        return
+    end
+    local skills, set = text:match("^SELF ([0-9a-fn]*)@([0-9n]*)")
     if skills then
         local p = B.paladins[senderKey]
-        if not p then return end
+        if not p or #skills < 6 then return end
         local can = {}
-        for i, k in ipairs({ "wisdom", "might", "kings" }) do can[k] = skills:sub(2 * i - 1, 2 * i - 1) == "n" and 0 or 2 end
-        local s = {}
-        for i, class in ipairs(PP_CLASSES) do s[class] = PP_BLESS[set:sub(i, i)] end
-        if p.addon ~= "lg" then apply(senderKey, s, can, nil, "pp") end
+        for i, k in ipairs(PP_SKILLS) do can[k] = skills:sub(2 * i - 1, 2 * i - 1) == "n" and 0 or 2 end
+        local s, other = ppParse(set)
+        if p.addon ~= "lg" then apply(senderKey, s, can, nil, "pp", other) end
         return
     end
     local function target(name)
         local key = Names.Key(Names.Strip(name))
         if key and B.paladins[key] and senderMayAssign(senderKey, key) then return key end
     end
+    local function current(key)
+        local p = B.paladins[key]
+        local s, o = {}, {}
+        for c, b in pairs(p.set or {}) do s[c] = b end
+        for c, d in pairs(p.ppOther or {}) do o[c] = d end
+        return s, o
+    end
     local name, classIdx, digit = text:match("^ASSIGN (.*) (%d+) (%d+)$")
     if name then
         local key, class = target(name), PP_CLASSES[tonumber(classIdx)]
         if key and class then
-            local s = {}
-            for c, b in pairs(B.paladins[key].set or {}) do s[c] = b end
-            s[class] = PP_BLESS[digit]
-            apply(key, s, nil, nil, "pp")
+            local s, o = current(key)
+            s[class], o[class] = PP_BLESS[digit], (digit:find("^[4-9]$") and digit) or nil
+            apply(key, s, nil, nil, "pp", o)
         end
         return
     end
@@ -588,9 +641,8 @@ local function hearPallyPower(text, senderKey)
     if pname then
         local key = target(pname)
         if key then
-            local s = {}
-            for i, class in ipairs(PP_CLASSES) do s[class] = PP_BLESS[pset:sub(i, i)] end
-            apply(key, s, nil, nil, "pp")
+            local s, o = ppParse(pset)
+            apply(key, s, nil, nil, "pp", o)
         end
         return
     end
@@ -598,14 +650,13 @@ local function hearPallyPower(text, senderKey)
     if mname then
         local key = target(mname)
         if key then
-            local s = {}
-            for _, class in ipairs(PP_CLASSES) do s[class] = PP_BLESS[mdigit] end
-            apply(key, s, nil, nil, "pp")
+            local s, o = ppParse(mdigit:sub(1, 1):rep(#PP_CLASSES))
+            apply(key, s, nil, nil, "pp", o)
         end
         return
     end
     if text:find("^CLEAR") then
-        for key in pairs(B.paladins) do if senderMayAssign(senderKey, key) then apply(key, {}, nil, nil, "pp") end end
+        for key in pairs(B.paladins) do if senderMayAssign(senderKey, key) then apply(key, {}, nil, nil, "pp", {}) end end
     end
 end
 

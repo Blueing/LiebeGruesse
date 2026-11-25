@@ -598,7 +598,7 @@ function Window.BuildNav()
                     end
                     b.icon:ClearAllPoints()
                     if frame.compact then b.icon:SetPoint("CENTER", 1, 0) else b.icon:SetPoint("LEFT", 18, 0) end
-                    b.icon:SetTexture(Theme.Icon(page.icon))
+                    Theme.SetIcon(b.icon, page.icon)
                     b.page = page
                     b:SetScript("OnClick", function() Window.Show(page.key) end)
                     b:SetHeight(itemH)
@@ -836,7 +836,7 @@ function Window.LayoutPageSearch()
     -- always the same width, so the pages can keep exactly this corner free
     ps:SetWidth(Window.SEARCH_W)
     ps:ClearAllPoints()
-    ps:SetPoint("TOPRIGHT", frame.content, "TOPRIGHT", 0, 0)
+    ps:SetPoint("TOPRIGHT", frame.content, "TOPRIGHT", page.head and -14 or 0, -(page.searchY or 0))
     ps:Show()
 end
 
@@ -932,7 +932,7 @@ end
 
 local function iconSetter(name, role)
     return function(tex)
-        tex:SetTexture(Theme.Icon(name))
+        Theme.SetIcon(tex, name)
         tex:SetTexCoord(0, 1, 0, 1)
         tex:SetVertexColor(Theme.Color(role or "bronze"))
     end
@@ -1100,6 +1100,35 @@ end
 ---------------------------------------------------------------------------
 -- Pages
 ---------------------------------------------------------------------------
+Window.HEAD_H = 60
+function Window.PageHead(page)
+    local band = CreateFrame("Frame", nil, frame.content)
+    band:SetHeight(Window.HEAD_H)
+    local bg = UI.Gradient(band, "accent", 0.10, "BACKGROUND")
+    bg:SetAllPoints()
+    local line = UI.Gradient(band, "accent", 0.9, "ARTWORK")
+    line:SetPoint("BOTTOMLEFT"); line:SetPoint("BOTTOMRIGHT", band, "BOTTOM", 0, 0)
+    line:SetHeight(1)
+    local box = CreateFrame("Frame", nil, band, "BackdropTemplate")
+    box:SetSize(40, 40)
+    box:SetPoint("LEFT", 10, 0)
+    UI.Skin(box, "input", "border")
+    local icon = UI.Icon(box, page.icon or "settings", 22, "accent")
+    icon:SetPoint("CENTER")
+    local title = UI.Text(band, 18, "text", "LEFT", nil, true)
+    title:SetPoint("TOPLEFT", box, "TOPRIGHT", 14, -2)
+    title:SetText(page.title or "")
+    local sub = UI.Text(band, 11, "muted", "LEFT")
+    sub:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 14, 3)
+    sub:SetWordWrap(false)
+    band:SetScript("OnSizeChanged", function(_, w)
+        if w and w > 0 then sub:SetWidth(math.max(60, w - 68 - Window.SEARCH_W - 40)) end
+    end)
+    sub:SetText(page.head == true and "" or page.head)
+    band.title, band.sub = title, sub
+    return band
+end
+
 local function build(page)
     if page.frame then return end
     page.frame = CreateFrame("Frame", nil, frame.content)
@@ -1107,8 +1136,19 @@ local function build(page)
     Window.building = page.key
     ns.Safe(page.builder, page.frame, page)
     Window.building = nil
+    -- settings pages: a head with icon, title and what the page is for; the
+    -- page search sits on its right
+    if page.head then
+        local band = Window.PageHead(page)
+        page.frame:ClearAllPoints()
+        page.frame:SetPoint("TOPLEFT", 0, -(Window.HEAD_H + 12))
+        page.frame:SetPoint("BOTTOMRIGHT")
+        band:SetParent(page.frame)
+        band:SetPoint("TOPLEFT", frame.content, "TOPLEFT")
+        band:SetPoint("TOPRIGHT", frame.content, "TOPRIGHT")
+        page.searchY = math.floor((Window.HEAD_H - Window.SEARCH_H) / 2)
     -- pages without a top row of their own give the page search a row above them
-    if page.searchRow then
+    elseif page.searchRow then
         page.frame:ClearAllPoints()
         page.frame:SetPoint("TOPLEFT", 0, -(Window.SEARCH_H + 10))
         page.frame:SetPoint("BOTTOMRIGHT")
