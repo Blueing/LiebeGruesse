@@ -239,6 +239,8 @@ local GROUPS = {
           run = function() ns.Attune.Test() end },
         { cmd = "test lfg", desc = "Dungeon interest with made-up members, roles and overlapping items (3 min, nothing sent or stored)",
           run = function() ns.Dungeons.Test() end },
+        { cmd = "test lfgchat", args = "[text]", desc = "Which dungeons the addon reads from a guild chat message – samples or your own text (nothing stored)",
+          run = function(rest) ns.Dungeons.TestChat(rest) end },
         { cmd = "test search", args = "[text]", desc = "Opens the search with a sample text (default: \"blessing\")",
           run = function(rest) ns.Window.OpenSearch((rest or "") ~= "" and rest or "blessing") end },
         { cmd = "test role", desc = "Why your group role is (not) set automatically (nothing is changed)",

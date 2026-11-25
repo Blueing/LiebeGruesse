@@ -9,7 +9,9 @@ All notable changes to Liebe Grüße – Guild Tools. Newest first.
 - feat(dungeons): wanted items show overlaps with other players of the same dungeon; items you get leave your list by themselves
 - feat(dungeons): marks run out after 14 days (7/30 selectable), "Renew" keeps them; synced to the guild on change and at login
 - feat(dungeons): the nine new Forever dungeons are in the list too (Hall of Thanes, Ruins of Lordaeron, Excavation Site: Wetlands, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold, Shaper's Terrace), sorted by level and tagged "Forever"
-- feat(test): /lg test lfg with made-up members
+- feat(dungeons): asking in guild chat ("LFG Strat UD", "wer kommt mit scholo?", "LF1M heal BRD", common short names in English and German) puts the player on the list for 2 hours – also without the addon (tag "chat", role unknown, the message as note); trade messages are ignored; switch under My interest
+- feat(dungeons): your own chat message makes a short mark of yours that is synced; marking or editing it turns it into a normal mark
+- feat(test): /lg test lfg with made-up members, /lg test lfgchat [text] shows what is read from a chat message
 
 ## [1.0.68] – 2026-11-25
 

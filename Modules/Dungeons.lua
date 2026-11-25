@@ -95,6 +95,14 @@ local function store()
     return g.dungeons
 end
 
+-- players seen asking for a dungeon in guild chat (local only, never sent):
+--   guild.dungeonChat[memberKey][dungeonKey] = { a = seen, x = expires, n = message }
+local function chatStore()
+    local g = ns.Database.Guild()
+    if type(g.dungeonChat) ~= "table" then g.dungeonChat = {} end
+    return g.dungeonChat
+end
+
 local function fire() ns.Debounce("dungeons-fire", 0.5, function() ns.Fire("LG_DUNGEONS") end) end
 
 -- "123,456" -> { 123, 456 }
@@ -128,8 +136,9 @@ local function validEntry(v, now)
     for _, c in ipairs(ROLES) do if off[c] then o = o .. c end end
     local note = cutNote(v.n)
     local ids = Dungeons.ItemIds(v.i)
+    -- c: picked up from the owner's own guild chat message (short mark)
     return { r = r, o = o ~= "" and o or nil, n = note ~= "" and note or nil,
-        i = #ids > 0 and table.concat(ids, ",") or nil, a = a, x = x }
+        i = #ids > 0 and table.concat(ids, ",") or nil, a = a, x = x, c = v.c and true or nil }
 end
 
 -- drops expired entries; true when something was removed
@@ -151,6 +160,15 @@ local function cleanStore()
             -- old empty records of others are not needed any more
             if not next(rec.e or {}) and not Names.Same(key, me) and (rec.t or 0) < now - 30 * DAY then s[key] = nil end
         end
+    end
+    local seen = chatStore()
+    for key, list in pairs(seen) do
+        if type(list) == "table" then
+            for dk, c in pairs(list) do
+                if type(c) ~= "table" or (tonumber(c.x) or 0) <= now then list[dk] = nil end
+            end
+        end
+        if type(list) ~= "table" or not next(list) then seen[key] = nil end
     end
 end
 
@@ -190,7 +208,9 @@ end
 
 function Dungeons.MyEntry(dk)
     local rec = mine(false)
-    return rec and rec.e[dk] or nil
+    local e = rec and rec.e[dk]
+    if e and (tonumber(e.x) or 0) <= ns.Now() then return nil end
+    return e
 end
 
 function Dungeons.Broadcast()
@@ -226,15 +246,21 @@ end
 
 local function expiry() return ns.Now() + (settings().days or 14) * DAY end
 
--- creates the entry when needed; returns it
+-- creates the entry when needed; returns it. A short mark from guild chat
+-- becomes a normal one (normal duration) as soon as you mark or edit it here.
 function Dungeons.Mark(dk)
     if not Dungeons.BY_KEY[dk] then return nil end
     local rec = mine(true)
     if not rec then return nil end
     local e = rec.e[dk]
+    if e and (tonumber(e.x) or 0) <= ns.Now() then e = nil end   -- expired, not pruned yet
     if not e then
         e = { r = Dungeons.GuessRole(), a = ns.Now(), x = expiry() }
         rec.e[dk] = e
+        changed()
+    elseif e.c then
+        e.c = nil
+        e.x = math.max(tonumber(e.x) or 0, expiry())
         changed()
     end
     return e
@@ -320,6 +346,184 @@ function Dungeons.CheckWishes()
 end
 
 ---------------------------------------------------------------------------
+-- Guild chat: "LFG Strat UD", "wer kommt mit scholo?", "LF1M heal BRD" …
+-- Every client reads the guild chat itself, so players without the addon show
+-- up as well – stored only locally for a short time, nothing is sent. Your own
+-- message also makes a short real mark (synced), so members who log in later
+-- see it too. A normal mark of yours is never touched.
+---------------------------------------------------------------------------
+Dungeons.CHAT_HOURS = 2
+
+-- per dungeon: what players write. Lower case; punctuation counts as a space
+-- ("Zul'Farrak" is matched as "zul farrak"). Whole words only.
+local ALIASES = {
+    rfc = { "rfc", "ragefire", "ragefire chasm", "flammenschlund" },
+    thanes = { "thanes", "hall of thanes", "halls of thanes" },
+    lordaeron = { "lordaeron", "ruins of lordaeron", "lorda" },
+    wc = { "wc", "wailing caverns", "hdw", "höhlen des wehklagens", "wehklagen" },
+    vc = { "deadmines", "dead mines", "todesminen" },   -- not "vc": that is voice chat
+    sfk = { "sfk", "shadowfang", "shadowfang keep", "burg schattenfang", "schattenfang", "bsf" },
+    bfd = { "bfd", "blackfathom", "blackfathom deeps", "tiefschwarze grotte", "tsg" },
+    stocks = { "stocks", "stockade", "verlies" },
+    excavation = { "excavation", "excavation site", "ausgrabung", "ausgrabungsstätte" },
+    smgy = { "sm gy", "smgy", "sm graveyard", "graveyard", "sm friedhof", "friedhof" },
+    dalaran = { "dalaran", "city of dalaran" },
+    gnomer = { "gnomer", "gnomeregan" },
+    rfk = { "rfk", "razorfen kraul", "kral" },
+    smlib = { "sm lib", "smlib", "sm library", "library", "sm bib", "bibliothek" },
+    smarm = { "sm arm", "smarm", "sm armory", "armory", "sm wk", "waffenkammer" },
+    drowned = { "drowned", "drowned city" },
+    smcath = { "sm cath", "smcath", "sm kath", "cathedral", "kathedrale", "cath", "kath" },
+    rfd = { "rfd", "razorfen downs", "hügel von razorfen" },
+    kroldok = { "kroldok", "krol dok", "kroldok stronghold" },
+    ulda = { "ulda", "uldaman" },
+    zf = { "zf", "zul farrak", "zulfarrak" },
+    mara = { "mara", "maraudon" },
+    alcaz = { "alcaz", "alcaz prison" },
+    st = { "st", "sunken temple", "versunkener tempel", "atal hakkar" },
+    brd = { "brd", "blackrock depths", "schwarzfelstiefen" },
+    blackmaw = { "blackmaw", "blackmaw hold" },
+    lbrs = { "lbrs", "lower blackrock", "lower blackrock spire", "untere schwarzfelsspitze" },
+    dme = { "dm e", "dme", "dm east", "dm ost", "dire maul east", "düsterbruch ost", "db ost" },
+    dmw = { "dm w", "dmw", "dm west", "dire maul west", "düsterbruch west", "db west" },
+    dmn = { "dm n", "dmn", "dm north", "dm nord", "dire maul north", "düsterbruch nord", "db nord", "tribute run", "tribut" },
+    ubrs = { "ubrs", "upper blackrock", "upper blackrock spire", "obere schwarzfelsspitze" },
+    shaper = { "shaper", "shapers terrace", "shaper s terrace" },
+    stratl = { "strat live", "stratlive", "strat l", "live strat", "strat lebend" },
+    stratud = { "strat ud", "stratud", "strat undead", "ud strat", "strat tot", "strat untot", "baron run" },
+    scholo = { "scholo", "scholomance" },
+}
+-- names for several dungeons, only used when no single one was named:
+-- keys = all of them count, pick = the one that suits the player's level
+local GROUP_ALIASES = {
+    { words = { "strat", "stratholme" }, keys = { "stratl", "stratud" } },
+    { words = { "sm", "kloster", "scarlet monastery", "scharlachrotes kloster" }, pick = { "smgy", "smlib", "smarm", "smcath" } },
+    { words = { "dire maul", "düsterbruch" }, pick = { "dme", "dmw", "dmn" } },
+    { words = { "brs", "blackrock spire", "schwarzfelsspitze" }, keys = { "lbrs", "ubrs" } },
+}
+-- the message has to ask for a group …
+local INTENT = { "lfg", "lfm", "lf", "looking for", "suche", "suchen", "sucht", "such", "wer kommt", "wer will", "wer hat lust",
+    "wer mag", "wer ist dabei", "wer noch", "jemand", "anyone", "someone", "need", "brauche", "brauchen", "mitkommen",
+    "mit nach", "lust auf", "gruppe für", "group for", "noch platz" }
+-- … and must not be about trading
+local SKIP = { "wts", "wtb", "verkaufe", "kaufe", "verkauf", "ankauf" }
+
+local function normalize(text)
+    text = ns.PlainText(text):lower():gsub("[%p]", " "):gsub("%s+", " ")
+    return " " .. text .. " "
+end
+
+local function bestFit(keys, level)
+    if not level then return keys[1] end
+    local best, dist
+    for _, k in ipairs(keys) do
+        local d = Dungeons.BY_KEY[k]
+        local x = math.abs((d.min + d.max) / 2 - level)
+        if not dist or x < dist then best, dist = k, x end
+    end
+    return best
+end
+
+-- dungeon keys a guild chat message asks for (nil: none / not a group search)
+function Dungeons.ParseChat(text, level)
+    if type(text) ~= "string" or text:find("^%s*[!%[]") then return nil end   -- commands, "[LG] …" answers
+    local s = normalize(text)
+    for _, w in ipairs(SKIP) do if s:find(" " .. w .. " ", 1, true) then return nil end end
+    local intent = false
+    for tok in s:gmatch("%S+") do
+        if tok:match("^lf%d?[mg]?$") then intent = true; break end
+    end
+    if not intent then
+        for _, w in ipairs(INTENT) do if s:find(" " .. w .. " ", 1, true) then intent = true; break end end
+    end
+    -- short questions like "strat ud?" or "jemand scholo?"
+    if not intent and text:find("?", 1, true) and #s <= 42 then intent = true end
+    if not intent then return nil end
+    local found, seen = {}, {}
+    local function add(k) if k and not seen[k] then seen[k] = true; found[#found + 1] = k end end
+    for _, d in ipairs(Dungeons.LIST) do
+        for _, a in ipairs(ALIASES[d.key] or {}) do
+            if s:find(" " .. a .. " ", 1, true) then add(d.key); break end
+        end
+    end
+    for _, g in ipairs(GROUP_ALIASES) do
+        local list, named = g.keys or g.pick, false
+        for _, k in ipairs(list) do if seen[k] then named = true end end
+        if not named then
+            for _, w in ipairs(g.words) do
+                if s:find(" " .. w .. " ", 1, true) then
+                    if g.keys then for _, k in ipairs(g.keys) do add(k) end else add(bestFit(g.pick, level)) end
+                    break
+                end
+            end
+        end
+    end
+    return #found > 0 and found or nil
+end
+
+local function chatOn()
+    return settings().chat ~= false and ns.Database.Settings().modules.dungeons ~= false
+end
+
+function Dungeons.HeardChat(text, sender)
+    if not chatOn() then return end
+    local key = Names.Key(sender)
+    if not key then return end
+    local isMe = Names.Same(key, Names.Me())
+    local g = ns.Guild.Find(key)
+    local level = (g and g.level) or (isMe and ns.Call(UnitLevel, "player")) or nil
+    local keys = Dungeons.ParseChat(text, level)
+    if not keys then return end
+    local now = ns.Now()
+    local x = now + Dungeons.CHAT_HOURS * 3600
+    local note = cutNote(ns.PlainText(text))
+    note = note ~= "" and note or nil
+    if isMe then
+        -- own message: a short real mark that is synced; a normal mark stays as it is
+        local rec = mine(true)
+        if not rec then return end
+        local any = false
+        for _, dk in ipairs(keys) do
+            local e = rec.e[dk]
+            if not e or (tonumber(e.x) or 0) <= now then
+                rec.e[dk] = { r = Dungeons.GuessRole(), a = now, x = x, c = true, n = note }
+                any = true
+            elseif e.c then
+                e.a, e.x, e.n = now, x, note
+                any = true
+            end
+        end
+        if any then changed() end
+    else
+        local seen = chatStore()
+        seen[key] = seen[key] or {}
+        for _, dk in ipairs(keys) do seen[key][dk] = { a = now, x = x, n = note } end
+        fire()
+    end
+end
+
+ns.On("CHAT_MSG_GUILD", function(_, text, sender)
+    if ns.IsSecret(text) or ns.IsSecret(sender) or type(text) ~= "string" or type(sender) ~= "string" then return end
+    Dungeons.HeardChat(text, sender)
+end)
+
+-- /lg test lfgchat [text]: what the addon reads from a message (nothing stored)
+local CHAT_SAMPLES = { "LFG Strat UD", "wer kommt mit scholo?", "LF1M heal BRD", "suche gruppe für sm cath", "LFM Zul'Farrak need tank",
+    "jemand DM Nord tribute?", "wts [Righteous Orb] 5g", "bin kurz afk", "strat?", "LFG Hall of Thanes" }
+function Dungeons.TestChat(text)
+    local list = (text and text:find("%S")) and { text } or CHAT_SAMPLES
+    local level = ns.Call(UnitLevel, "player")
+    ns.Print(L.TEST_TAG .. " " .. L.DG_CHAT_TEST:format(Dungeons.CHAT_HOURS))
+    for _, t in ipairs(list) do
+        local keys = Dungeons.ParseChat(t, level)
+        local names = {}
+        for _, k in ipairs(keys or {}) do names[#names + 1] = Dungeons.BY_KEY[k].name end
+        print(("  %s  →  %s"):format(Theme.HexColor("text", t),
+            #names > 0 and Theme.HexColor("good", table.concat(names, ", ")) or Theme.HexColor("muted", L.DG_CHAT_NONE)))
+    end
+end
+
+---------------------------------------------------------------------------
 -- Reading: who wants a dungeon
 ---------------------------------------------------------------------------
 local testRecords, testUntil = nil, 0
@@ -353,6 +557,23 @@ function Dungeons.Interested(dk, onlyOnline)
     if testRecords and GetTime() < testUntil then
         for key, rec in pairs(testRecords) do add(key, rec, true) end
     end
+    -- seen in guild chat (local, no role): only when the player has no mark of their own for it
+    local have = {}
+    for _, r in ipairs(rows) do have[r.key] = true end
+    for key, list in pairs(chatStore()) do
+        local c = type(list) == "table" and list[dk]
+        if type(c) == "table" and (tonumber(c.x) or 0) > now and not have[key] then
+            local g, m = memberInfo(key)
+            local online = (g and g.online) or false
+            if (g or not rosterKnown) and (online or not onlyOnline) then
+                rows[#rows + 1] = {
+                    key = key, name = (g and g.name) or Names.Display(key), class = (g and g.class) or m.c,
+                    level = (g and g.level) or m.l, online = online, chat = true,
+                    e = { n = c.n, a = c.a, x = c.x, c = true }, ids = {}, spec = ns.SpecPoints(m),
+                }
+            end
+        end
+    end
     -- items wanted by more than one player
     local wanted = {}
     for _, r in ipairs(rows) do
@@ -382,7 +603,7 @@ function Dungeons.Counts()
         for _, r in ipairs(Dungeons.Interested(d.key)) do
             c.total = c.total + 1
             if r.online then c.online = c.online + 1 end
-            c[r.e.r] = (c[r.e.r] or 0) + 1
+            if r.e.r then c[r.e.r] = (c[r.e.r] or 0) + 1 end
             c.names[#c.names + 1] = Names.Display(r.name)
         end
         out[d.key] = c
@@ -493,6 +714,9 @@ function Dungeons.Test()
             e = { stratud = e("D", nil, nil, "need the Baron quest", 5 * DAY), scholo = e("D", nil, "13937") } },
         ["test mirabel"] = { name = "Mirabel", class = "DRUID", level = 58, online = false,
             e = { brd = e("D", "TH", "11815", nil, 6 * 3600), ubrs = e("H", "D", "13965") } },
+        -- seen in guild chat: no role, short time
+        ["test borin"] = { name = "Borin", class = "HUNTER", level = 60, online = true,
+            e = { stratud = { c = true, n = "LF2M Strat UD, need heal + dps", a = now - 900, x = now + Dungeons.CHAT_HOURS * 3600 - 900 } } },
     }
     testUntil = GetTime() + 180
     ns.After(181, function() if GetTime() >= testUntil then testRecords = nil; fire() end end)
@@ -519,6 +743,8 @@ local function roleGlyph(r, size, dim)
 end
 
 local function rolesText(e)
+    -- only seen in guild chat: the role is not known
+    if not e.r then return UI.Glyph("message-circle", "muted", 12) .. " " .. Theme.HexColor("muted", L.DG_ROLE_UNKNOWN) end
     local out = roleGlyph(e.r, 12) .. " " .. Theme.HexColor("text", roleName(e.r))
     if e.o then
         local off = {}
@@ -631,7 +857,9 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
     sub:SetPoint("LEFT", title, "RIGHT", 10, -1)
     local markBtn = UI.Button(right, L.DG_MARK, 150, 24, function()
         if not state.dungeon then return end
-        if Dungeons.MyEntry(state.dungeon) then Dungeons.Unmark(state.dungeon) else Dungeons.Mark(state.dungeon) end
+        -- a short mark from guild chat becomes a normal one; a normal one is removed
+        local e = Dungeons.MyEntry(state.dungeon)
+        if e and not e.c then Dungeons.Unmark(state.dungeon) else Dungeons.Mark(state.dungeon) end
     end, "star")
     markBtn:SetPoint("TOPRIGHT", 0, 0)
     local editBtn = UI.Button(right, L.DG_EDIT, 90, 24, function()
@@ -668,13 +896,14 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
               text = function(r)
                   local dot = r.online and (UI.Glyph("dot", "good", 9) .. " ") or ""
                   local tag = (r.me and ("  " .. Theme.HexColor("lapis", L.ROSTER_YOU))) or (r.test and ("  " .. Theme.HexColor("muted", L.DG_TEST))) or ""
-                  return dot .. ns.ColorName(r.name, r.class) .. tag
+                  local chat = r.e.c and ("  " .. UI.Glyph("message-circle", "bronze", 11) .. Theme.HexColor("bronze", " " .. L.DG_CHAT_TAG)) or ""
+                  return dot .. ns.ColorName(r.name, r.class) .. tag .. chat
               end,
               sort = function(r) return r.key end },
             { key = "level", title = L.COL_LEVEL, width = 44, align = "CENTER",
               text = function(r) return tostring(r.level or "") end, sort = function(r) return r.level or 0 end, defaultDesc = true },
             { key = "role", title = L.DG_COL_ROLE, width = 120, text = function(r) return rolesText(r.e) end,
-              sort = function(r) return r.e.r end, noHighlight = true },
+              sort = function(r) return r.e.r or "Z" end, noHighlight = true },
             { key = "items", title = L.DG_COL_ITEMS, width = 130, optional = 2, noHighlight = true,
               text = function(r) return #r.ids > 0 and itemIcons(r, 18) or Theme.HexColor("muted", "–") end,
               sort = function(r) return #r.ids end, defaultDesc = true,
@@ -705,7 +934,8 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         onEnter = function(frame, r)
             ns.TipOwner(frame, "ANCHOR_RIGHT")
             GameTooltip:AddLine(ns.ColorName(r.name, r.class))
-            GameTooltip:AddLine(L.DG_TIP_MAIN:format(roleName(r.e.r)), 0.8, 0.8, 0.8)
+            if r.e.r then GameTooltip:AddLine(L.DG_TIP_MAIN:format(roleName(r.e.r)), 0.8, 0.8, 0.8) end
+            if r.e.c then GameTooltip:AddLine(L.DG_TIP_CHAT:format(expiresText(r.e)), 0.75, 0.6, 0.4, true) end
             if r.e.o then
                 local off = {}
                 for c in r.e.o:gmatch("[THD]") do off[#off + 1] = roleName(c) end
@@ -760,7 +990,8 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         if not d then pList:SetRows({}); return end
         title:SetText(d.name)
         sub:SetText(L.DG_LEVEL_RANGE:format(levelText(d)))
-        local marked = Dungeons.MyEntry(d.key) ~= nil
+        local mineE = Dungeons.MyEntry(d.key)
+        local marked = mineE ~= nil and not mineE.c
         markBtn:SetText(marked and L.DG_UNMARK or L.DG_MARK)
         editBtn:SetShown(marked)
         local players = Dungeons.Interested(d.key, state.online)
@@ -770,7 +1001,7 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         local main, off = { T = 0, H = 0, D = 0 }, { T = 0, H = 0, D = 0 }
         local clashes = 0
         for _, r in ipairs(players) do
-            main[r.e.r] = main[r.e.r] + 1
+            if r.e.r then main[r.e.r] = main[r.e.r] + 1 end
             for c in (r.e.o or ""):gmatch("[THD]") do off[c] = off[c] + 1 end
             for _ in pairs(r.clash) do clashes = clashes + 1 end
         end
@@ -811,7 +1042,11 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
                   set = function(r, v) state.mine = r.d.key; if v then Dungeons.Mark(r.d.key) else Dungeons.Unmark(r.d.key) end end,
                   tip = L.DG_TOGGLE_TIP } },
             { key = "order", title = L.DG_COL_DUNGEON, flex = 1, minWidth = 120,
-              text = function(r) return Theme.HexColor(Dungeons.MyEntry(r.d.key) and "text" or "textDim", r.d.name) .. foreverTag(r.d) end,
+              text = function(r)
+                  local e = Dungeons.MyEntry(r.d.key)
+                  local chat = (e and e.c) and ("  " .. Theme.HexColor("bronze", L.DG_CHAT_TAG)) or ""
+                  return Theme.HexColor(e and "text" or "textDim", r.d.name) .. foreverTag(r.d) .. chat
+              end,
               sort = function(r) return r.d.order end },
             { key = "level", title = L.COL_LEVEL, width = 54, align = "CENTER",
               text = function(r) return Theme.HexColor(fits(r.d, myLevel()) and "textDim" or "muted", levelText(r.d)) end,
@@ -831,20 +1066,24 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         searchText = function(r) return r.d.name .. " " .. r.d.short .. (r.d.forever and " forever" or "") end,
     })
     mList:SetPoint("TOPLEFT", 0, 0)
-    mList:SetPoint("BOTTOMRIGHT", -(EDIT_W + 14), 30)
+    mList:SetPoint("BOTTOMRIGHT", -(EDIT_W + 14), 62)
 
-    local renewAll = UI.Button(my, L.DG_RENEW_ALL, 150, 24, function() Dungeons.RenewAll() end, "rotate-ccw")
+    local renewAll = UI.Button(my, L.DG_RENEW_ALL, 120, 24, function() Dungeons.RenewAll() end, "rotate-ccw")
     renewAll:SetPoint("BOTTOMLEFT", 0, 0)
     renewAll.tip = { L.DG_RENEW_ALL_TIP }
     local daysLabel = UI.Text(my, 11, "muted")
     daysLabel:SetPoint("LEFT", renewAll, "RIGHT", 14, 0)
     daysLabel:SetText(L.DG_KEEP_FOR)
-    local days = UI.Dropdown(my, 110, function()
+    local days = UI.Dropdown(my, 90, function()
         local items = {}
         for _, n in ipairs(Dungeons.DURATIONS) do items[#items + 1] = { value = n, text = L.DG_DAYS:format(n) } end
         return items
     end, function() return settings().days end, function(v) settings().days = v end)
     days:SetPoint("LEFT", daysLabel, "RIGHT", 8, 0)
+    -- guild chat pick-up on/off (own row above, the list ends there)
+    local chatCheck = UI.Check(my, L.DG_CHAT_PICKUP:format(Dungeons.CHAT_HOURS), function() return settings().chat ~= false end,
+        function(v) settings().chat = v; fire() end, L.DG_CHAT_PICKUP_TIP)
+    chatCheck:SetPoint("BOTTOMLEFT", 0, 32)
 
     -- editor card
     local card = UI.Panel(my, "panel", "borderDim")
@@ -988,6 +1227,7 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         for _, d in ipairs(Dungeons.LIST) do rows[#rows + 1] = { key = d.key, d = d } end
         mList:SetRows(rows)
         days:Refresh()
+        chatCheck:Refresh()
         local d = Dungeons.BY_KEY[state.mine]
         local e = entry()
         cTitle:SetText(ns.Upper(d and d.name or ""))

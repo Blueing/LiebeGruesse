@@ -913,6 +913,12 @@ local enUS12 = {
     DG_IN_DAYS = "%d d left", DG_IN_HOURS = "%d h left",
     DG_UNKNOWN = "No dungeon matches “%s”.",
     DG_FOREVER = "Forever", DG_FOREVER_TIP = "New dungeon of WoW Forever",
+    DG_CHAT_TAG = "chat", DG_ROLE_UNKNOWN = "role?",
+    DG_TIP_CHAT = "Asked in guild chat – shown for a short time (%s).",
+    DG_CHAT_PICKUP = "Pick up guild chat (%d h)",
+    DG_CHAT_PICKUP_TIP = "Someone asks for a dungeon in guild chat (\"LFG Strat UD\", \"wer kommt mit scholo?\") – they show up here for a short time, also without the addon. Your own message makes a short mark of yours.",
+    DG_CHAT_TEST = "What the addon reads from guild chat messages (a hit counts %d h, nothing stored):",
+    DG_CHAT_NONE = "nothing (no dungeon or no group search)",
 }
 for k, v in pairs(enUS12) do enUS[k] = v end
 
