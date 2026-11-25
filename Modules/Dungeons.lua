@@ -657,7 +657,7 @@ function Dungeons.ChatAnswer(text)
     for maxNames = (#keys == 1 and 6 or 3), 0, -1 do
         local parts = {}
         for _, dk in ipairs(keys) do parts[#parts + 1] = answerFor(dk, maxNames) end
-        local text2 = table.concat(parts, " · ")
+        local text2 = table.concat(parts, " / ")
         if #text2 <= CHAT_MAX or maxNames == 0 then return text2:sub(1, CHAT_MAX) end
     end
 end

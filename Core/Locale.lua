@@ -907,8 +907,9 @@ local enUS12 = {
     DG_ADD_ITEM = "Add item", DG_ADD_WAIT = "Shift-click item…",
     DG_ADD_HINT = "Or: drop an item on “Add item”, or click it and then shift-click an item (bags, chat, loot addon). Right-click an icon removes it.",
     DG_FIND_HINT = "Item ID or name, then Enter…",
-    DG_ANSWER = "%s: %d want to go – %s",
-    DG_ANSWER_NONE = "%s: nobody has marked it yet – mark it under Guild › Dungeons (/lg lfg).",
+    -- chat answers: plain ASCII only (the chat server is picky about special characters)
+    DG_ANSWER = "%s: %d want to go - %s",
+    DG_ANSWER_NONE = "%s: nobody has marked it yet - mark it with /lg lfg",
     DG_ANSWER_CHAT = "asked in chat",
     DG_ASK_NO_DUNGEON = "“%s” is no dungeon – !lg answers it as a crafting question.",
     DG_ASK_STATUS = "!lg answers on: %s · prefix: %s · client: %s · chat free now: %s",
