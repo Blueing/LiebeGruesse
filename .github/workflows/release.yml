@@ -1,0 +1,23 @@
+name: Release
+
+# Startet bei jedem Tag-Push, z. B.:  git tag 1.0.61 && git push origin 1.0.61
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # GitHub Release anlegen
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}      # CurseForge-Upload (Projekt 1828767)
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}  # GitHub Release + release.json für WowUp
+      # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}  # optional, für Wago Addons
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: BigWigsMods/packager@v2

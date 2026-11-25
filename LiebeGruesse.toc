@@ -1,0 +1,85 @@
+## Interface: 16001
+## Title: Liebe Grüße |cffe8c27aGuild Tools|r
+## Notes: Guild tools for Liebe Grüße: roster, inspect, feed, loot council, cooldown tracker and version check.
+## Notes-enUS: Guild tools for Liebe Grüße: roster, inspect, feed, loot council, cooldown tracker and version check.
+## Author: Liebe Grüße
+## X-Curse-Project-ID: 1828767
+## Version: 1.0.60
+## SavedVariables: LiebeGruesseDB
+## OptionalDeps: PriceGraphForever, Auctionator, TradeSkillMaster, LibSharedMedia-3.0
+## IconTexture: Interface\AddOns\LiebeGruesse\Media\icon
+## Category: Guild
+## AddonCompartmentFunc: LiebeGruesse_OnCompartmentClick
+## AddonCompartmentFuncOnEnter: LiebeGruesse_OnCompartmentEnter
+## AddonCompartmentFuncOnLeave: LiebeGruesse_OnCompartmentLeave
+
+Core\Init.lua
+Core\Locale.lua
+Core\Changelog.lua
+Core\Util.lua
+Core\DB.lua
+Core\Serialize.lua
+Core\Comm.lua
+Core\Guild.lua
+Core\Share.lua
+
+UI\Theme.lua
+UI\Widgets.lua
+UI\List.lua
+UI\Window.lua
+UI\Minimap.lua
+UI\Toast.lua
+UI\Movers.lua
+
+Modules\Profile.lua
+Modules\Inspect.lua
+Modules\ArmoryTalents.lua
+Modules\ArmoryCompare.lua
+Modules\Armory.lua
+Modules\RosterPage.lua
+Modules\Tooltips.lua
+Modules\Feed.lua
+Modules\Notify.lua
+Modules\Versions.lua
+Modules\QoL.lua
+Modules\Greet.lua
+Modules\RaidCheck.lua
+Modules\Community.lua
+Modules\CommunityFun.lua
+Modules\CommunityDaily.lua
+Modules\Badges.lua
+Modules\CoGuild.lua
+Modules\LootCouncil\Council.lua
+Modules\LootCouncil\ItemQueue.lua
+Modules\LootCouncil\Popup.lua
+Modules\LootCouncil\CouncilWindow.lua
+Modules\LootCouncil\Page.lua
+Modules\LootCouncil\Companion.lua
+Modules\TradeTimers.lua
+Modules\Attune.lua
+Modules\Blessings\Blessings.lua
+Modules\Blessings\Bar.lua
+Modules\Blessings\Page.lua
+Modules\Cooldowns\Spells.lua
+Modules\Cooldowns\Cooldowns.lua
+Modules\Cooldowns\Bars.lua
+Modules\Cooldowns\Page.lua
+Modules\Professions.lua
+Modules\Crafts.lua
+Modules\CraftsPage.lua
+Modules\CraftQuery.lua
+Modules\ProfCooldowns.lua
+Modules\ProfSync.lua
+Modules\LifeData.lua
+Modules\LifeStats.lua
+Modules\LifeWindow.lua
+Modules\Stats.lua
+Modules\ModulesPage.lua
+Modules\Settings.lua
+Modules\Guide.lua
+Modules\Help.lua
+Modules\Credits.lua
+Modules\WhatsNew.lua
+Modules\TestTools.lua
+
+Core\Slash.lua

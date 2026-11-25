@@ -1,0 +1,10 @@
+Barlow wird mitgeliefert und ist die Standardschrift. Schriftstärke "Kräftig"
+(Standard): Semi Condensed SemiBold für Text, Condensed Bold für Titel und Zahlen.
+"Normal": Semi Condensed Medium und Condensed SemiBold.
+"Fett": Semi Condensed Bold und Condensed ExtraBold.
+Neue Schriftdateien lädt das Spiel erst nach einem kompletten Neustart (nicht /reload). Lizenz: SIL Open Font License,
+siehe Licenses/Barlow-OFL.txt.
+
+Optional: Eine eigene, lizenzierte Kopie von "Expressway" kannst du hier als
+Expressway.ttf ablegen und unter Aussehen auswählen. Stellt ein anderes Addon
+Expressway bereit, wird sie ebenfalls gefunden.
