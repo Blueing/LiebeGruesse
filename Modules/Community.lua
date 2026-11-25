@@ -700,7 +700,6 @@ function Community.Boards(days)
         { title = L.BOARD_FAILPULL, tip = L.BOARD_TIP_FAILPULL, icon = "swords", list = top(fail) },
         { title = L.BOARD_MISPULL, tip = L.BOARD_TIP_MISPULL, icon = "move", list = top(mispull) },
         { title = L.BOARD_DEATHS, tip = L.BOARD_TIP_DEATHS, icon = "x", list = top(death) },
-        { title = L.BOARD_FALLS, tip = L.BOARD_TIP_FALLS, icon = "minus", list = top(falls) },
         { title = L.BOARD_LUCKY, tip = L.BOARD_TIP_LUCKY, icon = "gem", list = lucky },
         { title = L.BOARD_UNLUCKY, tip = L.BOARD_TIP_UNLUCKY, icon = "scale", list = unlucky },
         { title = L.BOARD_REPAIR, tip = L.BOARD_TIP_REPAIR, icon = "hammer", list = top(repair, 5, gold) },

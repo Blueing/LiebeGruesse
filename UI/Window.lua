@@ -904,6 +904,7 @@ end)
 -- Global search (sidebar): pages, settings, guide, commands, members, recipes
 ---------------------------------------------------------------------------
 local LIMIT = 6
+local CRUMB = "  ›  "   -- breadcrumb separator in the second line
 
 -- 0 = starts with, 1 = word starts with, 2 = contains, nil = no match
 local function score(text, q)
@@ -956,47 +957,81 @@ function Window.SearchEntries(q)
             local sc = score(page.title, q) or (q ~= "" and score(page.key, q))
             if sc then
                 list[#list + 1] = { score = sc, sort = string.format("%03d", page.order), text = page.title,
-                    tag = sectionTitle[page.section], value = { kind = "page", key = page.key }, setIcon = iconSetter(page.icon) }
+                    sub = L.SEARCH_CRUMB_PAGE .. (sectionTitle[page.section] and (CRUMB .. sectionTitle[page.section]) or ""),
+                    value = { kind = "page", key = page.key }, setIcon = iconSetter(page.icon) }
             end
         end
     end
     add(L.SEARCH_PAGES, sorted(list), q == "" and 99 or LIMIT)
     if q == "" then return out end
 
-    -- settings (rows of every settings form)
+    -- settings (rows of every settings form): the same label in several places
+    -- is one entry ("3 places: …") that opens to its places
     list = {}
-    local seen = {}
+    local groups, seen = {}, {}
     for _, form in ipairs(UI.forms or {}) do
         local page = form.page and pages[form.page]
         if page and not form.noIndex and Window.PageVisible(page) then
-            local function offer(label, sc, filter)
-                local id = page.key .. "\1" .. label
-                if sc and not seen[id] then
-                    seen[id] = true
-                    list[#list + 1] = { score = sc, sort = label, text = label, tag = page.title,
-                        value = { kind = "setting", key = page.key, label = filter or label, form = form }, setIcon = iconSetter("settings", "muted") }
+            local function offer(label, sc, card, isSection)
+                if not sc then return end
+                local id = page.key .. "\1" .. (card or "") .. "\1" .. label .. (isSection and "\1s" or "")
+                if seen[id] then return end
+                seen[id] = true
+                local gk = (isSection and "s\1" or "r\1") .. label:lower()
+                local g = groups[gk]
+                if not g then
+                    g = { label = label, isSection = isSection, score = sc, places = {} }
+                    groups[gk] = g
+                    list[#list + 1] = g
                 end
+                g.score = math.min(g.score, sc)
+                local crumb = page.title .. ((not isSection and card and card ~= "") and (CRUMB .. card) or "")
+                g.places[#g.places + 1] = { page = page, card = card, crumb = crumb,
+                    value = { kind = "setting", key = page.key, label = label, form = form } }
             end
             for _, section in ipairs(form.sections) do
                 -- the card itself ("Import / export", "Sound" …)
-                if section.title ~= "" then offer(section.title, score(section.title, q)) end
+                if section.title ~= "" then offer(section.title, score(section.title, q), section.title, true) end
                 for _, row in ipairs(section.rows) do
                     local label = row.label and row.label:GetText() or row.searchTitle
                     if label and label ~= "" then
                         local sc = score(label, q)
                         if not sc and #q >= 3 and form.RowText(row):lower():find(q, 1, true) then sc = 3 end
-                        offer(label, sc)
+                        offer(label, sc, section.title)
                     end
                     -- buttons are settings, too ("Export", "Test sound" …)
                     for _, btn in ipairs(row.buttons or {}) do
                         local t = btn.label and btn.label:GetText()
-                        if t and t ~= "" then offer(t, score(t, q)) end
+                        if t and t ~= "" then offer(t, score(t, q), section.title) end
                     end
                 end
             end
         end
     end
-    add(L.SEARCH_SETTINGS, sorted(list), 5)
+    for i, g in ipairs(list) do
+        local prefix = g.isSection and L.SEARCH_SECTION or nil
+        local icon = iconSetter(g.isSection and "layout-grid" or "settings", "muted")
+        local e = { score = g.score, sort = g.label, text = g.label, prefix = prefix, setIcon = icon }
+        if #g.places == 1 then
+            e.sub, e.value = g.places[1].crumb, g.places[1].value
+        else
+            -- "3 places: Unit Frames, Raid" – pages, or the cards when it is one page
+            local names, have, pagesN = {}, {}, {}
+            for _, pl in ipairs(g.places) do if not pagesN[pl.page.key] then pagesN[pl.page.key] = true; pagesN[#pagesN + 1] = pl.page.title end end
+            local byCard = #pagesN == 1
+            for _, pl in ipairs(g.places) do
+                local n = byCard and (pl.card ~= "" and pl.card or pl.page.title) or pl.page.title
+                if not have[n] then have[n] = true; names[#names + 1] = n end
+            end
+            e.sub = L.SEARCH_PLACES:format(#g.places, table.concat(names, ", "))
+            e.children = {}
+            for _, pl in ipairs(g.places) do
+                e.children[#e.children + 1] = { text = g.label, prefix = prefix, sub = pl.crumb, value = pl.value, setIcon = icon }
+            end
+        end
+        list[i] = e
+    end
+    add(L.SEARCH_SETTINGS, sorted(list), 6)
 
     -- guide topics
     list = {}
@@ -1004,7 +1039,8 @@ function Window.SearchEntries(q)
         local sc = score(e.name, q)
         if not sc and #q >= 3 and (e.sum or ""):lower():find(q, 1, true) then sc = 3 end
         if sc then
-            list[#list + 1] = { score = sc, sort = e.name, text = e.name, tag = L.PAGE_GUIDE,
+            list[#list + 1] = { score = sc, sort = e.name, text = e.name,
+                sub = L.PAGE_GUIDE .. (sectionTitle[e.section] and (CRUMB .. sectionTitle[e.section]) or ""),
                 value = { kind = "guide", key = e.key }, setIcon = iconSetter(e.icon) }
         end
     end
@@ -1017,8 +1053,13 @@ function Window.SearchEntries(q)
         local sc = score(name, q)
         if sc then
             local r, g, b = ns.ClassColor(m.class)
-            list[#list + 1] = { score = sc + (m.online and 0 or 0.5), sort = name, text = name,
-                right = m.level and tostring(m.level) or "", tag = m.online and L.SEARCH_ONLINE or nil,
+            local info = {}
+            if m.level then info[#info + 1] = L.SEARCH_LEVEL:format(m.level) end
+            if m.class then info[#info + 1] = ns.ClassName and ns.ClassName(m.class) or m.class end
+            if m.rank then info[#info + 1] = m.rank end
+            list[#list + 1] = { score = sc + (m.online and 0 or 0.5), sort = name, text = ns.ColorName(name, m.class),
+                sub = L.SEARCH_CRUMB_MEMBER .. (#info > 0 and (CRUMB .. table.concat(info, " · ")) or ""),
+                tag = m.online and L.SEARCH_ONLINE or nil,
                 value = { kind = "member", key = key },
                 setIcon = function(tex)
                     tex:SetVertexColor(1, 1, 1)
@@ -1037,7 +1078,7 @@ function Window.SearchEntries(q)
             if not sc and #q >= 3 and (c.desc or ""):lower():find(q, 1, true) then sc = 3 end
             if g.key == "test" and sc and not q:find("test", 1, true) then sc = sc + 1 end
             if sc then
-                list[#list + 1] = { score = sc, sort = text, hlRole = "text", text = Theme.HexColor("accent", text) .. "  " .. Theme.HexColor("muted", c.desc or ""),
+                list[#list + 1] = { score = sc, sort = text, hlRole = "text", text = Theme.HexColor("accent", text), sub = c.desc,
                     value = { kind = "command", c = c, g = g }, setIcon = iconSetter("chevron-right", "accent") }
             end
         end
@@ -1046,7 +1087,8 @@ function Window.SearchEntries(q)
 
     -- recipes: hands the text to the crafting search
     if #q >= 3 and Window.PageVisible(pages.professions or { hidden = true }) then
-        add(L.SEARCH_RECIPES, { { text = L.SEARCH_RECIPES_FOR:format(q), value = { kind = "recipe", q = q }, setIcon = iconSetter("hammer") } })
+        add(L.SEARCH_RECIPES, { { text = L.SEARCH_RECIPES_FOR:format(q), sub = L.PAGE_PROFESSIONS .. CRUMB .. L.SEARCH_CRUMB_CRAFT,
+            value = { kind = "recipe", q = q }, setIcon = iconSetter("hammer") } })
     end
     if #out == 0 then
         out[1] = { head = L.SEARCH_NOTHING:format(q) }
@@ -1091,7 +1133,7 @@ function Window.OpenSearch(text)
     Window.BuildAll()
     local gs = frame.globalSearch
     UI.SearchMenu(gs, {
-        width = 440, placeholder = L.SEARCH_ALL, text = text, hint = L.SEARCH_KEYS,
+        width = 440, twoLine = true, placeholder = L.SEARCH_ALL, text = text, hint = L.SEARCH_KEYS,
         point = { "TOPLEFT", "TOPLEFT", -8, 8 },
         build = Window.SearchEntries, onPick = Window.PickSearch,
     })

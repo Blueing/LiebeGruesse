@@ -835,7 +835,7 @@ local enUS11 = {
     ROSTER_YOU = "you", ROSTER_MINE = "yours",
     SEARCH_HITS = "%d found", SEARCH_NO_HITS = "none",
     CRAFT_HITS = "%d found",
-    SEARCH_KEYS = "Arrow keys: choose · Enter: open · Esc: close",
+    SEARCH_KEYS = "Arrow keys: choose · Enter: open (+ shows all places) · Esc: close",
     FEED_CHIP_all = "All", FEED_CHIP_lvl = "Levels", FEED_CHIP_boss = "Bosses", FEED_CHIP_loot = "Loot",
     FEED_CHIP_prof = "Professions", FEED_CHIP_first = "Firsts", FEED_CHIP_join = "Joins", FEED_CHIP_lc = "Council",
     CHIP_COUNT = "%d entries", FEED_EMPTY_KIND = "No entries for “%s” yet.",
@@ -877,5 +877,16 @@ local enUS11 = {
     NOTIFY_FAILVOTE = "Fail-pull vote after a wipe", NOTIFY_FAILVOTE_TIP = "After a wipe in a raid a small vote asks who pulled. Counts on the Community board.",
 }
 for k, v in pairs(enUS11) do enUS[k] = v end
+
+
+-- Search (two-line results) and chat diagnostics
+local enUS13 = {
+    CHAT_BLOCKED_ONCE = "The game blocked an automatic chat line of this addon – other members' addons answer \"!lg\" questions for the next 2 minutes. Details: /lg test chat",
+    CHAT_REPORT = "Automatic chat lines – what the game allows right now:",
+    CRAFT_POST = "Post", CRAFT_POST_NONE = "No \"!lg\" answer to post.", CRAFT_POST_DONE = "This answer is in guild chat already.",
+    SEARCH_SECTION = "Section:", SEARCH_PLACES = "%d places: %s", SEARCH_LEVEL = "Level %s",
+    SEARCH_CRUMB_PAGE = "Page", SEARCH_CRUMB_MEMBER = "Member", SEARCH_CRUMB_CRAFT = "Guild crafting",
+}
+for k, v in pairs(enUS13) do enUS[k] = v end
 
 for k, v in pairs(enUS) do L[k] = v end

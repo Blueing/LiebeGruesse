@@ -223,10 +223,11 @@ Guide.LIST = {
           { "shopping-cart", "Shopping list", "Professions › Shopping list – or the cart button at the top" },
           { "timer", "Cooldowns", "Profession cooldowns (transmutes …)" } },
       tips = { "!lg answers only from English clients – that keeps the answer short and single.",
+          "Asked by an addon user? The answer shows in the chat window of every addon user (not in guild chat) – “[Post]” behind it or /lg post puts it into guild chat.",
           "Shopping list: click the cart twice = materials for two crafts; right-click removes one. Nothing you own is subtracted.",
           "New recipes are synced the next time you open the profession.", "Poisons do not count as a profession." },
       shared = "Your recipes and skill levels.",
-      cmds = { "/lg professions", "/lg craft <item>", "/lg shop", "/lg price <item>", "!lg <item>", "!lg price <item>", "/lg test shopping", "/lg test price <item>", "/lg test profsync" } },
+      cmds = { "/lg professions", "/lg craft <item>", "/lg shop", "/lg price <item>", "!lg <item>", "!lg price <item>", "/lg post", "/lg test shopping", "/lg test price <item>", "/lg test profsync" } },
 
     { key = "stats", section = "me", icon = "badge-check", name = "Statistics", page = "stats", module = "stats",
       who = { "Everyone" }, test = "test stats",

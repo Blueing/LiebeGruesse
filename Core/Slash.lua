@@ -167,6 +167,8 @@ local GROUPS = {
         { cmd = "craft", args = "<recipe or item>",
           desc = "Search the guild crafting list",
           run = function(rest) showCraftSearch(rest) end, aliases = { "search" } },
+        { cmd = "post", desc = "Posts the last \"!lg\" answer from your chat window to guild chat (also: [Post] in the line)",
+          run = function() ns.CraftQuery.PostAnswer() end },
         { cmd = "who", args = "<recipe or item>",
           desc = "Who can craft it? Answer only for you in chat",
           run = function(rest)
@@ -237,6 +239,11 @@ local GROUPS = {
           run = function() ns.Attune.Test() end },
         { cmd = "test search", args = "[text]", desc = "Opens the search with a sample text (default: \"blessing\")",
           run = function(rest) ns.Window.OpenSearch((rest or "") ~= "" and rest or "blessing") end },
+        { cmd = "test chat", args = "[reset]", desc = "Why automatic chat lines (craft answers, greetings) may be blocked – combat, restrictions, last block (nothing is sent); reset: answer \"!lg\" again",
+          run = function(rest)
+              if (rest or ""):find("reset") then ns.blockedAt = nil end
+              ns.ChatReport()
+          end },
         { cmd = "test role", desc = "Why your group role is (not) set automatically (nothing is changed)",
           run = function() ns.QoL.Test() end },
         { cmd = "test font", desc = "Shows which font files load (font weight check)",
