@@ -389,14 +389,16 @@ local ALIASES = {
     dmn = { "dm n", "dmn", "dm north", "dm nord", "dire maul north", "düsterbruch nord", "db nord", "tribute run", "tribut" },
     ubrs = { "ubrs", "upper blackrock", "upper blackrock spire", "obere schwarzfelsspitze" },
     shaper = { "shaper", "shapers terrace", "shaper s terrace" },
-    stratl = { "strat live", "stratlive", "strat l", "live strat", "strat lebend" },
-    stratud = { "strat ud", "stratud", "strat undead", "ud strat", "strat tot", "strat untot", "baron run" },
+    stratl = { "strat live", "stratlive", "strat l", "live strat", "strat lebend",
+        "strath live", "strathlive", "strath l", "live strath", "strath lebend" },
+    stratud = { "strat ud", "stratud", "strat undead", "ud strat", "strat tot", "strat untot", "baron run",
+        "strath ud", "strathud", "strath undead", "ud strath", "strath tot", "strath untot" },
     scholo = { "scholo", "scholomance" },
 }
 -- names for several dungeons, only used when no single one was named:
 -- keys = all of them count, pick = the one that suits the player's level
 local GROUP_ALIASES = {
-    { words = { "strat", "stratholme" }, keys = { "stratl", "stratud" } },
+    { words = { "strat", "strath", "stratholme" }, keys = { "stratl", "stratud" } },
     { words = { "sm", "kloster", "scarlet monastery", "scharlachrotes kloster" }, pick = { "smgy", "smlib", "smarm", "smcath" } },
     { words = { "dire maul", "düsterbruch" }, pick = { "dme", "dmw", "dmn" } },
     { words = { "brs", "blackrock spire", "schwarzfelsspitze" }, keys = { "lbrs", "ubrs" } },
@@ -509,7 +511,7 @@ end)
 
 -- /lg test lfgchat [text]: what the addon reads from a message (nothing stored)
 local CHAT_SAMPLES = { "LFG Strat UD", "wer kommt mit scholo?", "LF1M heal BRD", "suche gruppe für sm cath", "LFM Zul'Farrak need tank",
-    "jemand DM Nord tribute?", "wts [Righteous Orb] 5g", "bin kurz afk", "strat?", "LFG Hall of Thanes" }
+    "jemand DM Nord tribute?", "wts [Righteous Orb] 5g", "bin kurz afk", "strat?", "LFM strath", "LFG Hall of Thanes" }
 function Dungeons.TestChat(text)
     local list = (text and text:find("%S")) and { text } or CHAT_SAMPLES
     local level = ns.Call(UnitLevel, "player")
