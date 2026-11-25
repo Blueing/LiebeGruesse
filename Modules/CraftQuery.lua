@@ -336,6 +336,14 @@ function Craft.Reply(query, raw)
     return Craft.Answer(query, raw)
 end
 
+-- why "!lg" questions would (not) be answered by this client: for /lg test lfgask
+function Craft.Status()
+    local blocked, why = ns.ChatBlocked()
+    local locale = GetLocale and ns.Call(GetLocale) or "?"
+    return { answer = settings().answer and true or false, prefix = settings().prefix or "!lg", locale = locale,
+        english = englishClient(), blocked = blocked and true or false, why = why }
+end
+
 -- /lg test price <item>: the answer only in your chat window
 function Craft.TestPrice(text)
     text = tostring(text or "")
@@ -354,8 +362,12 @@ end
 local function drawToken(query, raw)
     local token = math.random(1, 100000)
     if ns.ChatBlocked() then token = token + 2000000 end
-    -- dungeon questions: every client knows the same, so only combat counts
-    if dungeonQuestion(query) then return CLAIM_BASE + token, 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.15 end
+    -- dungeon questions: every client knows the same, so only combat counts. The claim
+    -- lies below every crafting claim, so a version without dungeon answers (which
+    -- would say "no recipe found") always loses
+    if dungeonQuestion(query) then
+        return CLAIM_BASE - 10000000 + token, 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.15
+    end
     -- the client that knows the recipe answers (others may miss a profile)
     local isPrice, q, r = Craft.ParsePrice(query, raw)
     local ok, hits = pcall(Craft.Lookup, q, r)

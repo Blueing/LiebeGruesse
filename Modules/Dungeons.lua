@@ -668,6 +668,13 @@ function Dungeons.TestAsk(text)
     if not text:find("%S") then text = "ubrs" end
     local answer = Dungeons.ChatAnswer(text)
     ns.Print(L.TEST_TAG .. " " .. (answer and ("[LG] " .. answer) or L.DG_ASK_NO_DUNGEON:format(text)))
+    -- would this client answer in guild chat?
+    local st = ns.CraftQuery and ns.CraftQuery.Status and ns.CraftQuery.Status()
+    if st then
+        local yes, no = Theme.HexColor("good", L.YES), Theme.HexColor("bad", L.NO)
+        print("  " .. L.DG_ASK_STATUS:format(st.answer and yes or no, st.prefix, st.locale, st.blocked and (no .. " (" .. tostring(st.why or "") .. ")") or yes))
+        if not st.answer then print("  " .. Theme.HexColor("warn", L.DG_ASK_OFF)) end
+    end
 end
 
 ---------------------------------------------------------------------------
