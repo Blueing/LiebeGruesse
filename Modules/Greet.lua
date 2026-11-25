@@ -60,7 +60,7 @@ function Greet.Trigger(name)
     -- a short random pause, so the guild's greetings do not all land in the same second
     ns.After(1 + math.random() * 3, function()
         -- never from combat: the greeting waits until it ends
-        ns.AfterCombat("greet-" .. g.key, function()
+        ns.AutoChat("greet-" .. g.key, function()
             pending[g.key] = nil
             if Greet.Done(g.key) or not enabled() then return end
             markDone(g.key)

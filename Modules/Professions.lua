@@ -327,12 +327,25 @@ local function buildShopping(parent)
     panel.total:SetPoint("BOTTOMLEFT", 4, 40)
     panel.total:SetPoint("BOTTOMRIGHT", -4, 40)
     panel.total:SetWordWrap(true)
+    -- reagents to the Auction House addon: menu with the number of crafts
+    panel.shop = UI.Button(panel, L.SHOP_ADD_BUTTON, 190, 24, function(self, button)
+        if panel.recipe then ns.Shopping.CartClick(panel.recipe, button) end
+    end, "shopping-cart")
+    panel.shop:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    panel.shop:SetPoint("BOTTOMLEFT", 0, 6)
     panel.empty = UI.Text(panel, 12, "muted", "CENTER")
     panel.empty:SetPoint("CENTER")
     panel.empty:SetText(L.PROF_PICK_RECIPE)
     function panel:Show_(id)
         local r = id and db().recipes[id]
-        for _, region in ipairs({ head, self.list, self.total }) do region:SetShown(r ~= nil) end
+        for _, region in ipairs({ head, self.list, self.total, self.shop }) do region:SetShown(r ~= nil) end
+        self.recipe = r and id or nil
+        if r then
+            local n = ns.Shopping.InCart(id)
+            self.shop:SetText(n > 0 and L.SHOP_ADD_BUTTON_N:format(n) or L.SHOP_ADD_BUTTON)
+            local _, lines = ns.Shopping.CartTip(id)
+            self.shop.tip = lines
+        end
         self.empty:SetShown(r == nil)
         if not r then return end
         local calc = Professions.Calc(r)
@@ -378,6 +391,28 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
     local sourceLabel = UI.Text(content, 11, "muted", "RIGHT")
     sourceLabel:SetPoint("RIGHT", source, "LEFT", -8, 0)
     sourceLabel:SetText(L.PRICE_SOURCE)
+
+    -- the shopping cart: count on the button, menu with the recipes and where they go
+    -- click: the Shopping list tab; right-click: the quick menu
+    local cart = UI.Button(content, "", 30, 24, function(self, button)
+        if button == "RightButton" then ns.Shopping.Menu(self) elseif Professions.ShowTab then Professions.ShowTab("shop") end
+    end, "shopping-cart")
+    cart:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    cart:SetFrameLevel(content:GetFrameLevel() + 5)
+    cart.tipTitle = L.SHOP_MENU_TITLE
+    local function cartRefresh()
+        local n = ns.Shopping.CartCount()
+        cart:SetText(n > 0 and tostring(n) or "")
+        cart:SetWidth(n > 0 and 50 or 30)
+        cart.icon:ClearAllPoints()
+        if n > 0 then cart.icon:SetPoint("RIGHT", cart.label, "LEFT", -5, 0); cart.icon:SetVertexColor(Theme.Color("accent"))
+        else cart.icon:SetPoint("CENTER"); cart.icon:SetVertexColor(Theme.Color("textDim")) end
+        local lines = {}
+        if n > 0 then lines[#lines + 1] = ns.Shopping.CartTitle() else lines[#lines + 1] = L.SHOP_CART_EMPTY end
+        lines[#lines + 1] = L.SHOP_CART_BUTTON_TIP
+        cart.tip = lines
+    end
+    page.cartRefresh = cartRefresh
 
     local holder = CreateFrame("Frame", nil, content)
     holder:SetPoint("TOPLEFT", 0, -40)
@@ -447,17 +482,22 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
     guild:SetAllPoints()
     tabs.guild = guild
 
+    local shop = ns.Shopping.Build(holder)
+    shop:SetAllPoints()
+    tabs.shop = shop
+
     local cds = ns.ProfCD.Build(holder)
     cds:SetAllPoints()
     tabs.cds = cds
 
     local bar = UI.SubTabs(content, {
         { key = "guild", title = L.PROF_TAB_GUILD }, { key = "mine", title = L.PROF_TAB_MINE },
-        { key = "cds", title = L.PCD_TAB },
+        { key = "shop", title = L.SHOP_TAB }, { key = "cds", title = L.PCD_TAB },
     }, function(key)
         for k, t in pairs(tabs) do t:SetShown(k == key) end
         toolbar:SetShown(key == "mine")
         source:SetShown(key ~= "cds"); sourceLabel:SetShown(key ~= "cds" and not source.compact)
+        cart:SetShown(key ~= "cds" and key ~= "shop")
         tabs[key].Refresh()
     end)
     bar:SetPoint("TOPLEFT")
@@ -466,7 +506,8 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
     local function fitSource()
         local tabsW = 0
         for _, b in ipairs(bar.buttons) do tabsW = tabsW + (b:GetWidth() or 80) + 6 end
-        local free = (content:GetWidth() or 900) - ns.Window.SearchReserve() - tabsW - 12
+        cartRefresh()
+        local free = (content:GetWidth() or 900) - ns.Window.SearchReserve() - tabsW - 12 - cart:GetWidth() - 10
         local lw = (sourceLabel.GetUnboundedStringWidth and sourceLabel:GetUnboundedStringWidth()) or sourceLabel:GetStringWidth() or 40
         source.compact = nil
         source.label:Show()
@@ -486,6 +527,9 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
             source.compact = "icon"
         end
         sourceLabel:SetShown(source:IsShown() and not source.compact)
+        cart:ClearAllPoints()
+        if sourceLabel:IsShown() then cart:SetPoint("RIGHT", sourceLabel, "LEFT", -12, 0)
+        else cart:SetPoint("RIGHT", source, "LEFT", -10, 0) end
     end
     source:HookScript("OnEnter", function(self)
         if self.compact then UI.Tooltip(self, L.PRICE_SOURCE, { self.label:GetText() or "" }) end
@@ -520,6 +564,7 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
 end, { section = "forever", icon = "scroll-text", module = "professions" })
 
 ns.On("LG_PRICES", function() ns.Window.Refresh("professions") end)
+ns.On("LG_SHOPPING", function() ns.Window.Refresh("professions") end)
 ns.On("LG_PROFILE", function() ns.Debounce("prof-page", 1, function() ns.Window.Refresh("professions") end) end)
 ns.On("BAG_UPDATE_DELAYED", function() ns.Debounce("prof-bags", 1, function() ns.Window.Refresh("professions") end) end)
 ns.On("LG_ITEMS", function() ns.Window.Refresh("professions") end)

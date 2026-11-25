@@ -164,6 +164,24 @@ local function lastSeen(row)
     return Theme.HexColor("muted", L.DAYS_AGO:format(math.floor(h / 24)))
 end
 
+-- main professions of a row (no cooking, first aid, fishing), English names, highest skill first
+local SECONDARY_PROFS = { cooking = true, firstaid = true, fishing = true }
+function Roster.MainProfs(row)
+    local out = {}
+    for _, p in ipairs(row.profs or {}) do
+        local pk = ns.Crafts and ns.Crafts.ProfKey(p.n)
+        local info = pk and ns.Crafts.ProfInfo(pk)
+        if info and not SECONDARY_PROFS[pk] then
+            out[#out + 1] = { key = pk, icon = info.icon, name = ns.Crafts.ProfName(pk), s = p.s, order = info.order }
+        end
+    end
+    table.sort(out, function(a, b)
+        if (tonumber(a.s) or 0) ~= (tonumber(b.s) or 0) then return (tonumber(a.s) or 0) > (tonumber(b.s) or 0) end
+        return a.order < b.order
+    end)
+    return out
+end
+
 -- row tooltip: who it is, which data is known (source and age), where they are
 function Roster.RowTooltip(frame, row)
     local m, g = row.m or {}, row.g or {}
@@ -195,10 +213,14 @@ function Roster.RowTooltip(frame, row)
     if tostring(m.tp or ""):find("[1-9]") then data("sparkles", L.ARM_TALENTS, tostring(m.tp), L.ARM_FROM_ADDON, m.t)
     elseif insp.tp then data("sparkles", L.ARM_TALENTS, tostring(insp.tp), L.ARM_FROM_INSPECT, insp.t)
     else data("sparkles", L.ARM_TALENTS) end
-    if row.profs and #row.profs > 0 then
+    local mains = Roster.MainProfs(row)
+    if #mains > 0 then
+        -- main professions only (icon, name, skill) – cooking, first aid and fishing stay in the column tip
         local names = {}
-        for _, p in ipairs(row.profs) do names[#names + 1] = ("%s %s"):format(p.n, p.s or "?") end
-        data("hammer", L.COL_PROFESSIONS, table.concat(names, ", "), L.ARM_FROM_ADDON, m.t)
+        for _, p in ipairs(mains) do
+            names[#names + 1] = ("|T%s:12:12:0:0:64:64:5:59:5:59|t %s %s"):format(p.icon, p.name, Theme.HexColor("textDim", p.s or "?"))
+        end
+        data("hammer", L.COL_PROFESSIONS, table.concat(names, "  "), nil, m.t)
     else
         data("hammer", L.COL_PROFESSIONS)
     end

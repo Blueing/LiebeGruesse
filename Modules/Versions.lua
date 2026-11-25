@@ -204,6 +204,67 @@ function Versions.CheckGuild()
 end
 
 ---------------------------------------------------------------------------
+-- Players: one row per person – alts are grouped under their main
+---------------------------------------------------------------------------
+-- the main a guild character belongs to (own characters: the account main)
+function Versions.OwnerOf(key)
+    if Names.Same(key, Names.Me()) or (ns.db and ns.db.chars and ns.db.chars[key]) then
+        return (ns.Account and ns.Account.Main()) or Names.Me()
+    end
+    local m = ns.Database.Member(key)
+    local main = m and type(m.m) == "string" and Names.Key(m.m)
+    return main or key
+end
+
+-- every guild member (with or without the addon), grouped per player
+function Versions.PlayerRows(newest)
+    local byOwner, rows = {}, {}
+    for key, g in pairs(ns.Guild.members) do
+        local h = Versions.heard[key]
+        local m = ns.Database.Member(key)
+        local v = Names.Same(key, Names.Me()) and ns.version or (h and h.v) or (m and m.v)
+        local owner = Versions.OwnerOf(key)
+        local r = byOwner[owner]
+        if not r then
+            r = { key = owner, chars = {}, newest = newest }
+            byOwner[owner] = r
+            rows[#rows + 1] = r
+        end
+        local t = h and h.t or (m and m.seen)
+        r.chars[#r.chars + 1] = { key = key, name = g.name, class = g.class, v = v, online = g.online, t = t, level = g.level or 0 }
+        if v and (not r.v or ns.CompareVersions(v, r.v) > 0) then r.v = v end
+        if t and (not r.t or t > r.t) then r.t = t end
+        if g.online then r.online = true end
+    end
+    for _, r in ipairs(rows) do
+        -- the main first, then online characters, then by level
+        table.sort(r.chars, function(a, b)
+            local am, bm = Names.Same(a.key, r.key), Names.Same(b.key, r.key)
+            if am ~= bm then return am end
+            if (a.online and 1 or 0) ~= (b.online and 1 or 0) then return a.online == true end
+            if a.level ~= b.level then return a.level > b.level end
+            return a.key < b.key
+        end)
+        local first = r.chars[1]
+        local mainHere = Names.Same(first.key, r.key)
+        r.name, r.class = first.name, first.class
+        if not mainHere then
+            -- main outside the guild (or unknown): show the main's name, class from its profile if known
+            local mm = ns.Database.Member(r.key)
+            r.name = Names.Display(r.key)
+            r.class = (mm and mm.c) or first.class
+        end
+        for _, c in ipairs(r.chars) do
+            if c.online then
+                if not Names.Same(c.key, r.key) then r.onlineAs = Names.Display(c.name) end
+                break
+            end
+        end
+    end
+    return rows
+end
+
+---------------------------------------------------------------------------
 -- Page
 ---------------------------------------------------------------------------
 local mode = "guild"
@@ -252,10 +313,26 @@ UI.AddPage("versions", L.PAGE_VERSIONS, 30, function(content, page)
     fitInfo()
 
     local list = UI.List(content, {
-        sortKey = "v",
+        sortKey = "v", sortDesc = true,
         columns = {
-            { key = "name", title = L.COL_NAME, flex = true, text = function(r) return ns.ColorName(r.name, r.class) end,
-              sort = function(r) return r.key end },
+            { key = "name", title = L.COL_NAME, flex = true,
+              text = function(r)
+                  local more = r.chars and #r.chars > 1 and Theme.HexColor("muted", "  " .. L.VERSION_MORE_CHARS:format(#r.chars - 1)) or ""
+                  return ns.ColorName(r.name, r.class) .. more
+              end,
+              sort = function(r) return r.key end,
+              tip = function(r)
+                  if not r.chars or #r.chars < 2 then return end
+                  local lines = {}
+                  for _, c in ipairs(r.chars) do
+                      local v = c.v and Theme.HexColor(ns.CompareVersions(c.v, r.newest) < 0 and "warn" or "good", c.v) or Theme.HexColor("muted", "–")
+                      local on = c.online and ("  " .. Theme.HexColor("good", L.ONLINE)) or ""
+                      lines[#lines + 1] = ns.ColorName(c.name, c.class) .. "   " .. v .. on
+                  end
+                  lines[#lines + 1] = " "
+                  lines[#lines + 1] = Theme.HexColor("muted", L.VERSION_CHARS_HINT)
+                  return L.VERSION_CHARS_TIP, lines
+              end },
             { key = "v", title = L.COL_VERSION, width = 120,
               text = function(r)
                   if not r.v then return Theme.HexColor(r.inGroup and "bad" or "muted", r.inGroup and L.NO_ADDON or "–") end
@@ -265,10 +342,20 @@ UI.AddPage("versions", L.PAGE_VERSIONS, 30, function(content, page)
               sort = function(r) return r.v and (r.v:gsub("(%d+)", function(n) return ("%05d"):format(tonumber(n)) end)) or "" end },
             { key = "t", title = L.COL_LAST_SEEN, width = 120, text = function(r) return Theme.HexColor("muted", r.t and ns.Ago(r.t) or "–") end,
               sort = function(r) return -(r.t or 0) end },
-            { key = "online", title = L.COL_STATUS, width = 90,
-              text = function(r) return r.online and Theme.HexColor("good", L.ONLINE) or Theme.HexColor("muted", L.OFFLINE) end,
+            { key = "online", title = L.COL_STATUS, width = 170,
+              text = function(r)
+                  if not r.online then return Theme.HexColor("muted", L.OFFLINE) end
+                  if r.onlineAs then return Theme.HexColor("good", L.ONLINE) .. Theme.HexColor("muted", " · " .. L.VERSION_ON_CHAR:format(r.onlineAs)) end
+                  return Theme.HexColor("good", L.ONLINE)
+              end,
               sort = function(r) return r.online and 0 or 1 end },
         },
+        -- found by every character's name, not only the main's
+        searchText = function(r)
+            local parts = { r.name or "", r.v or "" }
+            for _, c in ipairs(r.chars or {}) do parts[#parts + 1] = c.name end
+            return table.concat(parts, " ")
+        end,
     })
     list:SetPoint("TOPLEFT", guildBtn, "BOTTOMLEFT", 0, -10)
     list:SetPoint("BOTTOMRIGHT")
@@ -340,20 +427,13 @@ UI.AddPage("versions", L.PAGE_VERSIONS, 30, function(content, page)
                     inGroup = true, newest = newest }
             end
         else
-            for key, g in pairs(ns.Guild.members) do
-                local h = Versions.heard[key]
-                local m = ns.Database.Member(key)
-                local v = Names.Same(key, Names.Me()) and ns.version or (h and h.v) or (m and m.v)
-                if v or g.online then
-                    rows[#rows + 1] = { key = key, name = g.name, class = g.class, v = v, t = h and h.t or (m and m.seen),
-                        online = g.online, newest = newest }
-                end
-            end
+            rows = Versions.PlayerRows(newest)
         end
         list:SetRows(rows)
         local with = 0
         for _, r in ipairs(rows) do if r.v then with = with + 1 end end
-        info:SetText(L.VERSION_SUMMARY:format(ns.version, newest, with, #rows))
+        local fmt = (mode == "group" and IsInGroup()) and L.VERSION_SUMMARY or L.VERSION_PLAYERS
+        info:SetText(fmt:format(ns.version, newest, with, #rows))
     end
 end, { section = "guild", icon = "badge-check", badge = function()
     return Versions.Available() and L.UPDATE_BADGE or nil

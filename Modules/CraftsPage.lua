@@ -266,6 +266,16 @@ local function treeColumns(refresh, compact)
               return L.CRAFT_COST, lines
           end,
           onClick = function(row, button) if Page.click then Page.click(row, button) end end },
+        -- shopping list for the Auction House: click = one more craft, right click = one less
+        { key = "shop", width = 34, align = "CENTER",
+          text = function(row)
+              if row.kind ~= "recipe" then return "" end
+              local n = ns.Shopping.InCart(row.id)
+              if n > 0 then return glyph("shopping-cart", "accent", 13) .. Theme.HexColor("accent", n) end
+              return glyph("shopping-cart", ns.Shopping.Reagents(row.id) and "textDim" or "borderDim", 13)
+          end,
+          onClick = function(row, button) if row.kind == "recipe" then ns.Shopping.CartClick(row.id, button) end end,
+          tip = function(row) if row.kind == "recipe" then return ns.Shopping.CartTip(row.id) end end },
         { key = "whisper", width = 30, align = "CENTER",
           text = function(row)
               if row.kind == "recipe" or row.kind == "crafter" then return glyph("message-circle", "textDim", 13) end

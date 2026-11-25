@@ -205,6 +205,44 @@ end
 ns.On("PLAYER_REGEN_ENABLED", function() ns.After(0.5, flushAfterCombat) end)
 ns.On("ENCOUNTER_END", function() ns.After(1, flushAfterCombat) end)
 
+-- Automatic chat messages (craft answers, greetings) must never be sent while the
+-- game could block them: in combat (also the plain "in combat" flag, which the
+-- lockdown check misses), during encounters or a chat lockdown.
+function ns.ChatBlocked()
+    if InCombatLockdown() then return true, "combat" end
+    if UnitAffectingCombat and ns.Call(UnitAffectingCombat, "player") == true then return true, "combat" end
+    return ns.CommsRestricted()
+end
+
+local autoChat, autoTimer = {}, nil
+local AUTO_MAX_WAIT = 600
+local function flushAutoChat()
+    autoTimer = nil
+    if ns.ChatBlocked() then
+        -- a chat lockdown ends without a combat event: look again, only while something waits
+        if next(autoChat) then autoTimer = C_Timer.NewTimer(5, flushAutoChat) end
+        return
+    end
+    local list = autoChat
+    autoChat = {}
+    local now = GetTime()
+    for _, item in pairs(list) do
+        if now - item.t <= AUTO_MAX_WAIT then ns.Safe(item.fn) end
+    end
+end
+-- Runs fn now when chat is allowed, otherwise once it is again (same key = latest wins).
+-- Stale entries (older than 10 min) are dropped.
+function ns.AutoChat(key, fn)
+    if not ns.ChatBlocked() then return ns.Safe(fn) end
+    autoChat[key] = { fn = fn, t = GetTime() }
+    if not autoTimer then autoTimer = C_Timer.NewTimer(5, flushAutoChat) end
+end
+-- Sends an automatic chat message through ns.AutoChat.
+function ns.SendChatAuto(key, text, chatType, target)
+    ns.AutoChat(key, function() ns.SendChat(text, chatType, target) end)
+end
+ns.On("PLAYER_REGEN_ENABLED", function() ns.After(0.6, function() if next(autoChat) then flushAutoChat() end end) end)
+
 ---------------------------------------------------------------------------
 -- Modules
 ---------------------------------------------------------------------------

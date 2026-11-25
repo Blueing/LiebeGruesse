@@ -713,14 +713,22 @@ local filter = "all"
 local KINDS = { "all", "lvl", "boss", "loot", "prof", "first", "join", "lc" }
 
 UI.AddPage("feed", L.PAGE_FEED, 20, function(content, page)
-    local drop = UI.Dropdown(content, 180, function()
-        local items = {}
-        for _, k in ipairs(KINDS) do items[#items + 1] = { value = k, text = L["FEED_KIND_" .. k] } end
-        return items
-    end, function() return filter end, function(v) filter = v; page.OnShow() end)
-    drop:SetPoint("TOPLEFT")
+    local list
+    -- filter chips (one kind at a time); they end before the page search in the top right corner
+    local items = {}
+    for _, k in ipairs(KINDS) do
+        items[#items + 1] = { value = k, text = L["FEED_CHIP_" .. k], icon = k == "all" and "newspaper" or ICONS[k], tip = L["FEED_KIND_" .. k] }
+    end
+    local chips = UI.FilterChips(content, items, function() return filter end, function(v)
+        filter = v
+        page.OnShow()
+        if page.query and page.query ~= "" then list:ShowFirstHit(page.query) end
+    end)
+    chips:SetPoint("TOPLEFT")
+    chips:SetPoint("TOPRIGHT", content, "TOPRIGHT", -ns.Window.SearchReserve(), 0)
+    page.feedChips = chips
 
-    local list = UI.List(content, {
+    list = UI.List(content, {
         rowHeight = 24, sortKey = "t", sortDesc = true,
         columns = {
             { key = "t", title = L.COL_WHEN, width = 110, text = function(r) return Theme.HexColor("muted", ns.Ago(r.t)) end,
@@ -742,8 +750,11 @@ UI.AddPage("feed", L.PAGE_FEED, 20, function(content, page)
     page.OnShow = function()
         ns.Database.Char().feedSeen = ns.Now()
         ns.Window.UpdateStatus()
-        local rows = {}
+        local rows, counts = {}, { all = 0 }
         for _, e in ipairs(feed()) do
+            local k = e.k == "leave" and "join" or e.k
+            counts[k] = (counts[k] or 0) + 1
+            counts.all = counts.all + 1
             local keep = filter == "all" or e.k == filter or (filter == "join" and e.k == "leave")
             if keep then
                 e.key = e.id
@@ -751,6 +762,9 @@ UI.AddPage("feed", L.PAGE_FEED, 20, function(content, page)
             end
         end
         list:SetRows(rows)
+        for _, k in ipairs(KINDS) do chips:SetCount(k, counts[k] or 0) end
+        chips:Refresh()
+        list:SetEmptyText(filter == "all" and L.FEED_EMPTY or L.FEED_EMPTY_KIND:format(L["FEED_KIND_" .. filter]))
     end
 end, { section = "guild", icon = "newspaper", module = "feed" })
 

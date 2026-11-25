@@ -162,7 +162,7 @@ local GROUPS = {
           end },
     } },
     { key = "crafts", title = "Professions & crafting", module = "professions", commands = {
-        { cmd = "professions", desc = "Professions page (guild crafting, my professions)",
+        { cmd = "professions", desc = "Professions page (guild crafting, my professions, shopping list, cooldowns)",
           run = function() ns.Window.Show("professions") end, aliases = { "prof", "crafts" } },
         { cmd = "craft", args = "<recipe or item>",
           desc = "Search the guild crafting list",
@@ -171,8 +171,18 @@ local GROUPS = {
           desc = "Who can craft it? Answer only for you in chat",
           run = function(rest)
               if (rest or "") == "" then ns.Print("Usage: /lg who <recipe>"); return end
-              ns.Print(ns.CraftQuery.Answer(rest))
+              ns.Print(ns.CraftQuery.Reply(rest))
           end },
+        { cmd = "price", args = "<recipe or item>",
+          desc = "Material cost of a recipe – answer only for you in chat (like !lg price)",
+          run = function(rest)
+              if (rest or "") == "" then ns.Print("Usage: /lg price <recipe>"); return end
+              ns.Print(ns.CraftQuery.Reply("price " .. rest))
+          end, aliases = { "cost" } },
+        { cmd = "shop", desc = "Your shopping list (Professions › Shopping list)",
+          run = function() ns.Window.Show("professions"); ns.Professions.ShowTab("shop") end, aliases = { "shopping", "cart" } },
+        { cmd = "shop clear", desc = "Empties your shopping list (and the Auctionator list)",
+          run = function() ns.Shopping.Clear() end },
         { cmd = "profcd", desc = "Guild profession cooldowns (Mooncloth, transmutes, salt …)",
           run = function() ns.Window.Show("professions"); ns.Professions.ShowTab("cds") end },
     } },
@@ -240,6 +250,10 @@ local GROUPS = {
         { cmd = "test feed", desc = "A guild feed notification", run = function() ns.Test.Feed() end },
         { cmd = "test feeddel", desc = "Adds a sample feed entry (only for you) to try deleting it (officers)",
           run = function() ns.Test.FeedDelete() end },
+        { cmd = "test shopping", args = "[recipe]", desc = "Shopping list for a known recipe as text (nothing goes to Auctionator or TSM)",
+          run = function(rest) ns.Shopping.Test(rest) end },
+        { cmd = "test price", args = "<item>", desc = "The \"!lg price\" answer, only for you (nothing sent)",
+          run = function(rest) ns.CraftQuery.TestPrice(rest) end },
         { cmd = "test profsync", desc = "The profession sync hint window and chat lines with sample professions (nothing stored)",
           run = function() ns.ProfSync.Test() end },
         { cmd = "test boards", desc = "Sample entries on all community leaderboards and the quote of the week (2 min, nothing stored or sent)",
@@ -260,6 +274,8 @@ local GROUPS = {
     { key = "chat", title = "Chat commands (also without addon)", chat = true, commands = {
         { cmd = "!lg", args = "<recipe or item link>",
           desc = "In guild chat or as a whisper: exactly one addon user answers who can craft it" },
+        { cmd = "!lg price", args = "<recipe or item link>",
+          desc = "The same with the material cost (also \"cost\" or \"mats\", in front or at the end)" },
         { cmd = "!lc", desc = "Whisper to the loot master: shows the answer buttons" },
         { cmd = "!lc", args = "<item no.> <button>",
           desc = "Answer for raiders without addon, e.g. \"!lc 1 need\" or \"!lc 2 2\"" },

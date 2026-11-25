@@ -1,21 +1,33 @@
-name: Release
+# Builds the addon on every pushed tag (e.g. 1.0.68) and uploads it to
+# GitHub Releases and CurseForge. Secret needed: CF_API_KEY
+# (Repo → Settings → Secrets and variables → Actions → "New repository secret").
+name: Package and release
 
-# Startet bei jedem Tag-Push, z. B.:  git tag 1.0.61 && git push origin 1.0.61
 on:
   push:
     tags:
       - "*"
+  # manual run from the Actions tab (handy to test the CurseForge upload)
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # GitHub Release anlegen
     env:
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}      # CurseForge-Upload (Projekt 1828767)
-      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}  # GitHub Release + release.json für WowUp
-      # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}  # optional, für Wago Addons
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Check the CurseForge key
+        run: |
+          if [ -z "$CF_API_KEY" ]; then
+            echo "::error::Secret CF_API_KEY is empty or not visible to this workflow (name, repository secret, not environment secret?)"
+            exit 1
+          fi
+          echo "CF_API_KEY is set (${#CF_API_KEY} characters)"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

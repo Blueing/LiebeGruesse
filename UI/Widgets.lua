@@ -686,6 +686,115 @@ function UI.Segmented(parent, width, options, get, set)
     return f
 end
 
+---------------------------------------------------------------------------
+-- Filter chips: a row of small toggle buttons (icon, label, count), one active.
+--   UI.FilterChips(parent, items { {value, text, icon = name or texture id, tip} }, get, set)
+-- Too narrow: chips shrink to the icon (label + count move into the tooltip).
+---------------------------------------------------------------------------
+function UI.FilterChips(parent, items, get, set)
+    local bar = CreateFrame("Frame", nil, parent)
+    bar:SetHeight(24)
+    bar.chips = {}
+    local GAP = 6
+    local function paint(c)
+        local on = c.value == get()
+        c:SetBackdropColor(Theme.Color(on and "accentDim" or "button"))
+        c:SetBackdropBorderColor(Theme.Color(on and "accent" or (c.hot and "border" or "borderDim")))
+        c.label:SetTextColor(Theme.Color(on and "text" or (c.hot and "textDim" or "muted")))
+        if c.iconRole then c.icon:SetVertexColor(Theme.Color(on and "accent" or (c.hot and "textDim" or "muted"))) end
+        c.icon:SetDesaturated(not on and not c.hot and not c.iconRole)
+        c.icon:SetAlpha((on or c.hot) and 1 or 0.75)
+    end
+    for i, item in ipairs(items) do
+        local c = CreateFrame("Button", nil, bar, "BackdropTemplate")
+        UI.Skin(c, "button", "borderDim")
+        c:SetHeight(24)
+        c.value, c.text = item.value, item.text
+        if type(item.icon) == "string" then
+            c.icon = UI.Icon(c, item.icon, 13, "muted")
+            c.iconRole = true
+        else
+            c.icon = c:CreateTexture(nil, "ARTWORK")
+            c.icon:SetSize(14, 14)
+            c.icon:SetTexture(item.icon or 134400)
+            c.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        end
+        c.label = UI.Text(c, 11, "muted", "LEFT")
+        c.label:SetText(item.text)
+        c.count = UI.Text(c, 10, "muted", "LEFT", nil, true)
+        c:SetScript("OnClick", function(self)
+            if get() == self.value then return end
+            ns.Safe(set, self.value)
+            bar:Refresh()
+        end)
+        c:SetScript("OnEnter", function(self)
+            self.hot = true; paint(self)
+            local lines = {}
+            if item.tip then lines[#lines + 1] = item.tip end
+            if self.n then lines[#lines + 1] = ns.L.CHIP_COUNT:format(self.n) end
+            -- always a tooltip: the full name and the number of entries
+            UI.Tooltip(self, self.text, lines)
+        end)
+        c:SetScript("OnLeave", function(self) self.hot = nil; paint(self); GameTooltip:Hide() end)
+        bar.chips[i] = c
+    end
+    -- n = entries behind a chip (nil hides the number)
+    function bar:SetCount(value, n)
+        for _, c in ipairs(self.chips) do
+            if c.value == value then c.n = n; c.count:SetText(n and tostring(n) or "") end
+        end
+        self:Fit()
+    end
+    -- the number shows only when there is something behind the chip
+    local function hasCount(c) return c.n ~= nil and c.n > 0 end
+    local function fullWidth(c, withCount)
+        local tw = c.label:GetStringWidth() or 0
+        if tw <= 0 then tw = #c.text * 6 end
+        local show = withCount and hasCount(c)
+        local cw = show and ((c.count:GetStringWidth() or 0) > 0 and c.count:GetStringWidth() or #tostring(c.n) * 6) or 0
+        return math.ceil(8 + 14 + 5 + tw + (show and (5 + cw) or 0) + 9)
+    end
+    -- wide: icon, label and count; narrower: without counts; narrow: icons only
+    function bar:Fit()
+        local avail = self:GetWidth() or 0
+        if avail <= 0 then avail = 1e9 end
+        local function total(withCount)
+            local sum = 0
+            for _, c in ipairs(self.chips) do sum = sum + fullWidth(c, withCount) + GAP end
+            return sum - GAP
+        end
+        local withCount = total(true) <= avail
+        local small = not withCount and total(false) > avail
+        local x = 0
+        for _, c in ipairs(self.chips) do
+            c.small = small
+            c.label:SetShown(not small); c.count:SetShown(not small and withCount and hasCount(c))
+            c.icon:ClearAllPoints()
+            local w
+            if small then
+                c.icon:SetPoint("CENTER")
+                w = 28
+            else
+                c.icon:SetPoint("LEFT", 8, 0)
+                c.label:ClearAllPoints(); c.label:SetPoint("LEFT", c.icon, "RIGHT", 5, 0)
+                c.count:ClearAllPoints(); c.count:SetPoint("LEFT", c.label, "RIGHT", 5, 0)
+                w = fullWidth(c, withCount)
+            end
+            c:SetWidth(w)
+            c:ClearAllPoints(); c:SetPoint("LEFT", x, 0)
+            x = x + w + GAP
+        end
+        self.usedWidth = x - GAP
+    end
+    function bar:Refresh()
+        for _, c in ipairs(self.chips) do paint(c) end
+    end
+    bar:SetScript("OnSizeChanged", function(self) self:Fit() end)
+    Theme.OnApply(function() bar:Refresh() end)
+    bar:Fit(); bar:Refresh()
+    return bar
+end
+
 function UI.Divider(parent, role)
     local t = UI.Fill(parent, role or "borderDim", "ARTWORK")
     t:SetHeight(1)

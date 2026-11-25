@@ -128,11 +128,15 @@ local function single(hit, suffix)
         { item or recipe or hit.name, "" },
         { hit.name, "" },
     }
+    -- the material cost, short, at the very end (" · mats ~64g")
+    local price = Craft.ShortPrice and Craft.ShortPrice(hit.id) or ""
     for _, limit in ipairs({ COMPACT, MAX_CHAT }) do
-        for _, t in ipairs(tries) do
-            for max = 2, 1, -1 do
-                local text = L.CRAFT_ANSWER_LIST:format(t[1], crafterText(list, max)) .. t[2] .. suffix
-                if #text <= limit then return text end
+        for _, withPrice in ipairs({ true, false }) do
+            for _, t in ipairs(tries) do
+                for max = 2, 1, -1 do
+                    local text = L.CRAFT_ANSWER_LIST:format(t[1], crafterText(list, max)) .. t[2] .. suffix .. (withPrice and price or "")
+                    if #text <= limit then return text end
+                end
             end
         end
     end
@@ -219,24 +223,144 @@ local function clean(text)
     return (text:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+---------------------------------------------------------------------------
+-- Price to craft: "!lg price <item>", "!lg cost <item>", "!lg mats <item>"
+-- (or the word at the end). The election key stays the whole question, so
+-- older versions compete for the same question and lose as always.
+---------------------------------------------------------------------------
+local PRICE_WORDS = { price = true, prices = true, cost = true, costs = true, mats = true, materials = true }
+Craft.PRICE_WORDS = PRICE_WORDS
+
+-- returns isPrice, query without the word, raw without the word
+function Craft.ParsePrice(query, raw)
+    query, raw = tostring(query or ""), tostring(raw or query or "")
+    local first, rest = query:match("^(%S+)%s+(.+)$")
+    if first and PRICE_WORDS[first:lower()] then
+        local r = raw:match("^%s*%S+%s+(.+)$") or rest
+        return true, rest, r
+    end
+    local head, last = query:match("^(.+)%s+(%S+)$")
+    if last and PRICE_WORDS[last:lower()] then
+        local r = raw:match("^(.-)%s+%S+%s*$") or head
+        return true, head, r
+    end
+    return false, query, raw
+end
+
+local function plainMoney(copper) return ns.Shopping.PlainMoney(copper) end
+
+local function itemName(id)
+    local info = ns.Items.Info(id)
+    if info and info.name then return info.name end
+    local c = ns.Items.names[id]
+    return c and c[1] or ("item " .. id)
+end
+
+-- price facts for a recipe: cost, missing, value, mats { {name, qty, cost} } or nil
+function Craft.PriceInfo(id)
+    local reagents = ns.Shopping.Reagents(id)
+    if not reagents then return nil end
+    local P = ns.Professions
+    local info = { cost = 0, missing = 0, mats = {} }
+    for item, qty in pairs(reagents) do
+        local price = P.Price(item) or ns.Shopping.VendorCost(item)
+        if price then info.cost = info.cost + price * qty
+        elseif not ns.Shopping.IsVendor(item) then info.missing = info.missing + 1 end
+        info.mats[#info.mats + 1] = { name = itemName(item), qty = qty, cost = price and price * qty or -1 }
+    end
+    table.sort(info.mats, function(a, b) if a.cost ~= b.cost then return a.cost > b.cost end return a.name < b.name end)
+    local meta = ns.Crafts.Meta(id) or {}
+    local out = meta.o and P.Price(meta.o)
+    if out then info.value = out * (meta.y or 1) end
+    info.priced = info.cost > 0
+    return info
+end
+
+-- " · mats ~64g" (or "" without prices) for normal answers
+function Craft.ShortPrice(id)
+    local ok, p = pcall(Craft.PriceInfo, id)
+    if not ok or not p or not p.priced then return "" end
+    return " · " .. L.CRAFT_PRICE_MATS:format(plainMoney(p.cost)) .. (p.missing > 0 and "+" or "")
+end
+
+-- "[Lionheart Helm]: mats ~120g 40s (2x Arcanite Bar, …) · AH ~300g · Ben Lienert (online)"
+local function priceLine(hit, suffix)
+    suffix = suffix or ""
+    local item = Crafts.ItemLink(hit.id)
+    local p = Craft.PriceInfo(hit.id)
+    if not p then return trim(L.CRAFT_PRICE_NO_REAGENTS:format(item or hit.name)) end
+    if not p.priced then return trim(L.CRAFT_PRICE_NONE:format(item or hit.name)) end
+    local head = L.CRAFT_PRICE_MATS:format(plainMoney(p.cost)) .. (p.missing > 0 and L.CRAFT_PRICE_UNPRICED:format(p.missing) or "")
+    local sells = p.value and (" · " .. L.CRAFT_PRICE_SELLS:format(plainMoney(p.value))) or ""
+    local list = Crafts.Crafters(hit.id)
+    -- shrink step by step: mats list, crafters, AH value, link → name
+    for _, name in ipairs({ item or hit.name, hit.name }) do
+        for _, withSells in ipairs({ true, false }) do
+            -- the price matters most: crafters go before the materials do
+            for maxMats = math.min(4, #p.mats), 0, -1 do
+                for maxCrafters = 2, 0, -1 do
+                    local mats = {}
+                    for i = 1, maxMats do mats[i] = ("%dx %s"):format(p.mats[i].qty, p.mats[i].name) end
+                    if maxMats > 0 and maxMats < #p.mats then mats[#mats + 1] = L.CRAFT_MORE:format(#p.mats - maxMats) end
+                    local text = name .. ": " .. head .. (#mats > 0 and (" (" .. table.concat(mats, ", ") .. ")") or "")
+                        .. (withSells and sells or "")
+                        .. (maxCrafters > 0 and #list > 0 and (" · " .. crafterText(list, maxCrafters)) or "")
+                        .. suffix
+                    if #text <= COMPACT or (maxMats == 0 and maxCrafters == 0 and not withSells and #text <= MAX_CHAT) then return text end
+                end
+            end
+        end
+    end
+    return trim(hit.name .. ": " .. head .. suffix)
+end
+
+-- answer to a price question (query already without the word)
+function Craft.PriceAnswer(query, raw)
+    local hits = Craft.Lookup(query, raw)
+    if #hits == 0 then return Craft.Answer(query, raw) end
+    if #hits > 1 then return priceLine(hits[1], " · " .. L.CRAFT_MORE_MATCHES:format(#hits - 1)) end
+    return priceLine(hits[1])
+end
+
+-- any question: price questions get the price line
+function Craft.Reply(query, raw)
+    local isPrice, q, r = Craft.ParsePrice(query, raw)
+    if isPrice and #q >= 3 then return Craft.PriceAnswer(q, r) end
+    return Craft.Answer(query, raw)
+end
+
+-- /lg test price <item>: the answer only in your chat window
+function Craft.TestPrice(text)
+    text = tostring(text or "")
+    if #text < 3 then ns.Print(L.CRAFT_TEST_PRICE_USAGE); return end
+    ns.Print("[Test] [LG] %s", Craft.Reply("price " .. text))
+end
+
 local function say(text, channel, target)
     text = "[LG] " .. text
-    -- automatic answers never go out from combat: the game may block them
-    if ns.InCombat() then
-        ns.AfterCombat("craft-answer-" .. (target or channel), function() ns.SendChat(text, channel, target) end)
-        return
-    end
-    ns.SendChat(text, channel, target)
+    -- automatic answers never go out from combat or a chat lockdown: the game blocks them
+    ns.SendChatAuto("craft-answer-" .. (target or channel), text, channel, target)
 end
 
 -- election token: lower wins. Out of combat and with recipe data first.
 -- Returns the claim (always below older versions' claims) and the delay.
 local function drawToken(query, raw)
     local token = math.random(1, 100000)
-    if ns.InCombat() or (UnitAffectingCombat and ns.Call(UnitAffectingCombat, "player") == true) then token = token + 2000000 end
+    if ns.ChatBlocked() then token = token + 2000000 end
     -- the client that knows the recipe answers (others may miss a profile)
-    local ok, hits = pcall(Craft.Lookup, query, raw)
-    if not ok or not hits or #hits == 0 then token = token + 1000000 end
+    local isPrice, q, r = Craft.ParsePrice(query, raw)
+    local ok, hits = pcall(Craft.Lookup, q, r)
+    if not ok or not hits or #hits == 0 then token = token + 1000000
+    elseif not isPrice then
+        -- normal questions end with the price: a client with prices first
+        local okP, p = pcall(Craft.PriceInfo, hits[1].id)
+        if not okP or not p or not p.priced then token = token + 500000 end
+    elseif isPrice then
+        -- price questions: a client with prices for every material first
+        local okP, p = pcall(Craft.PriceInfo, hits[1].id)
+        if not okP or not p or not p.priced then token = token + 1000000
+        elseif p.missing > 0 then token = token + 500000 end
+    end
     -- every claim goes out within 1 s – older versions answer 1.4 s at the earliest,
     -- so this version always wins; better tokens claim sooner
     local delay = 0.05 + (token % 100000) / 100000 * 0.5 + math.floor(token / 1000000) * 0.15
@@ -269,7 +393,7 @@ ns.On("CHAT_MSG_GUILD", function(_, text, sender)
             pending[key] = nil
             if not still or (claims[key] and claims[key] < still.token) then return end
             recent[key] = GetTime()
-            say(Craft.Answer(query, raw), "GUILD")
+            say(Craft.Reply(query, raw), "GUILD")
         end)
     end)
 end)
@@ -290,5 +414,5 @@ end)
 ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
     if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
     local query, raw = parseQuery(text)
-    if query and #query >= 3 then say(Craft.Answer(query, raw), "WHISPER", sender) end
+    if query and #query >= 3 then say(Craft.Reply(query, raw), "WHISPER", sender) end
 end)
