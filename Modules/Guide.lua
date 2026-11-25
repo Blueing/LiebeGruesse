@@ -77,7 +77,7 @@ Guide.LIST = {
       sum = "Mark the dungeons you want to run – the guild sees who wants what and can whisper or invite you, no asking in guild chat.",
       steps = {
           { "Mark a dungeon", "My interest › switch it on. Your main role is guessed from your talents – change it if you like." },
-          { "Roles, note, items", "Off spec roles, a short note and up to six items you hope for (drop or shift-click them)." },
+          { "Roles, note, items", "Off spec roles, a short note and up to six items you hope for (type an ID or name, drop or shift-click them)." },
           { "See who wants to go", "Who wants to go › pick a dungeon: players with role, items and note – online first." },
           { "Get the group together", "Click a player to whisper (the text is prepared, not sent), right-click to invite." },
       },

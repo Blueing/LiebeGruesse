@@ -319,6 +319,71 @@ function Dungeons.RemoveItem(dk, id)
     end)
 end
 
+-- Items the addon can find by name. WoW has no item search by name, so this
+-- is what is known anyway: items seen this session, the guild's gear, the loot
+-- history, your bags and everyone's wanted items.
+local function knownItemIds()
+    local ids = {}
+    local function add(x)
+        local id = ns.Items.ID(ns.Items.String(x) or x) or tonumber(x)
+        if id then ids[id] = true end
+    end
+    for id in pairs(ns.Items.names) do ids[id] = true end
+    local g = ns.Database.Guild()
+    for _, m in pairs(g.members or {}) do
+        if type(m) == "table" and type(m.g) == "table" then for _, s in pairs(m.g) do add(s) end end
+    end
+    for _, r in ipairs(g.lootHistory or {}) do if type(r) == "table" then add(r.i) end end
+    local numSlots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
+    local getLink = (C_Container and C_Container.GetContainerItemLink) or GetContainerItemLink
+    if numSlots and getLink then
+        for bag = 0, 4 do
+            for slot = 1, (ns.Call(numSlots, bag) or 0) do add(ns.Call(getLink, bag, slot)) end
+        end
+    end
+    for _, rec in pairs(store()) do
+        for _, e in pairs(type(rec) == "table" and type(rec.e) == "table" and rec.e or {}) do
+            for _, id in ipairs(Dungeons.ItemIds(type(e) == "table" and e.i)) do ids[id] = true end
+        end
+    end
+    return ids
+end
+
+-- item ids for what was typed: an id, a link or (part of) a name.
+-- Second result true: a number that is no item.
+function Dungeons.FindItems(text)
+    text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then return {} end
+    local id = tonumber(text) or ns.Items.ID(ns.Items.String(text))
+    if id then
+        local instant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+        if instant and not ns.Call(instant, id) then return {}, true end
+        return { id }
+    end
+    local q = ns.PlainText(text):lower():gsub("^%[", ""):gsub("%]$", "")
+    local exact, partial, names = {}, {}, {}
+    -- the client knows an exact name directly when the item is in its cache
+    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local _, link = ns.Call(getInfo, text)
+    local direct = link and ns.Items.ID(ns.Items.String(link))
+    if direct then exact[1] = direct end
+    for kid in pairs(knownItemIds()) do
+        if kid ~= direct then
+            local info = ns.Items.Info(kid)
+            local name = info and info.name
+            if name then
+                names[kid] = name
+                local n = name:lower()
+                if n == q then exact[#exact + 1] = kid
+                elseif #q >= 3 and n:find(q, 1, true) then partial[#partial + 1] = kid end
+            end
+        end
+    end
+    if #exact > 0 then return exact end
+    table.sort(partial, function(a, b) return names[a] < names[b] end)
+    return partial
+end
+
 -- a wanted item that landed in your bags (or is worn) is taken off the list
 local function haveItem(id)
     local count = (C_Item and C_Item.GetItemCount) or GetItemCount
@@ -1187,10 +1252,33 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
     local capture = { untilT = 0 }
     local addBtn = UI.Button(edit, L.DG_ADD_ITEM, 120, 26, nil, "star")
     local addHint = UI.Text(edit, 10, "muted")
-    addHint:SetPoint("TOPLEFT", 0, -208)
+    addHint:SetPoint("TOPLEFT", 0, -236)
     addHint:SetPoint("RIGHT", edit, "RIGHT")
     addHint:SetWordWrap(true)
     addHint:SetText(L.DG_ADD_HINT)
+    -- type an item id or (part of) a name; several matches: pick one from a menu
+    local findBox = UI.EditBox(edit, EDIT_W - 32, 24, L.DG_FIND_HINT)
+    findBox:SetPoint("TOPLEFT", 0, -206)
+    local function addFound(id)
+        if state.mine and Dungeons.AddItem(state.mine, id) then findBox:SetText("") end
+    end
+    findBox.onEnter = function(self)
+        local text = self:GetText()
+        if not state.mine or not text:find("%S") then return end
+        local ids, badId = Dungeons.FindItems(text)
+        if #ids == 0 then
+            ns.Print(badId and L.DG_FIND_BAD_ID:format(text) or L.DG_FIND_NONE:format(text))
+            return
+        end
+        if #ids == 1 then addFound(ids[1]); return end
+        local items = {}
+        for i, id in ipairs(ids) do
+            if i > 30 then break end
+            items[#items + 1] = { value = id, text = ("|T%s:14:14|t %s"):format(tostring(ns.Items.Icon(id)), ns.Items.Link(id)) }
+        end
+        UI.OpenMenu(self, items, function(id) addFound(id) end, self:GetWidth())
+    end
+    my.findBox = findBox
     local function dropCursor()
         local kind, _, link = ns.Call(GetCursorInfo)
         if kind ~= "item" or type(link) ~= "string" or not state.mine then return false end
@@ -1209,17 +1297,23 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
     end)
     addBtn:SetScript("OnReceiveDrag", dropCursor)
     Dungeons.CaptureItem = function(link)
+        -- shift-click while the ID/name field has the focus adds the item right away
+        if findBox:HasFocus() and state.mine and my:IsVisible() then
+            Dungeons.AddItem(state.mine, link)
+            findBox:SetText("")
+            return true
+        end
         if GetTime() >= capture.untilT or not state.mine or not my:IsVisible() then return false end
         Dungeons.AddItem(state.mine, link)
         setCapture(false)
         return true
     end
 
-    label(L.DG_COL_EXPIRES, -262)
+    label(L.DG_COL_EXPIRES, -290)
     local expText = UI.Text(edit, 12, "textDim")
-    expText:SetPoint("TOPLEFT", 0, -280)
+    expText:SetPoint("TOPLEFT", 0, -308)
     local renew = UI.Button(edit, L.DG_RENEW, 100, 24, function() if state.mine then Dungeons.Renew(state.mine) end end, "rotate-ccw")
-    renew:SetPoint("TOPLEFT", 0, -300)
+    renew:SetPoint("TOPLEFT", 0, -328)
     local remove = UI.Button(edit, L.DG_REMOVE, 120, 24, function() if state.mine then Dungeons.Unmark(state.mine) end end, "x")
     remove:SetPoint("LEFT", renew, "RIGHT", 8, 0)
 
@@ -1264,6 +1358,7 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         else
             addBtn:Hide()
         end
+        findBox:SetShown(#ids < MAX_ITEMS)
         expText:SetText(expiresText(e) .. Theme.HexColor("muted", "  ·  " .. L.DG_SINCE:format(ns.Ago(e.a))))
     end
     tabSearch.mine = {
