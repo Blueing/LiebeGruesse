@@ -243,6 +243,8 @@ local GROUPS = {
           run = function(rest) ns.Dungeons.TestChat(rest) end },
         { cmd = "test lfgask", args = "[dungeon]", desc = "The \"!lg <dungeon>\" answer (who wants to go), only for you (nothing sent)",
           run = function(rest) ns.Dungeons.TestAsk(rest) end },
+        { cmd = "test lgdebug", desc = "On/off: every step of a \"!lg\" question in your chat window – who claims, who answers, why not (only for you)",
+          run = function() ns.CraftQuery.ToggleDebug() end },
         { cmd = "test search", args = "[text]", desc = "Opens the search with a sample text (default: \"blessing\")",
           run = function(rest) ns.Window.OpenSearch((rest or "") ~= "" and rest or "blessing") end },
         { cmd = "test role", desc = "Why your group role is (not) set automatically (nothing is changed)",

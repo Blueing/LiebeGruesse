@@ -351,8 +351,20 @@ function Craft.TestPrice(text)
     ns.Print("[Test] [LG] %s", Craft.Reply("price " .. text))
 end
 
+-- /lg test lgdebug: every step of a "!lg" question in your chat window (only for you)
+Craft.debug = false
+local function dbg(fmt, ...)
+    if Craft.debug then ns.Print("|cff88ccff[!lg debug]|r " .. fmt, ...) end
+end
+function Craft.ToggleDebug()
+    Craft.debug = not Craft.debug
+    ns.Print("!lg debug: %s", Craft.debug and "ON – ask something in guild chat" or "off")
+end
+
 local function say(text, channel, target)
     text = "[LG] " .. text
+    local blocked, why = ns.ChatBlocked()
+    dbg("sending to %s%s: %s", channel, blocked and (" – WAITS, chat blocked (" .. tostring(why) .. ")") or "", text)
     -- automatic answers never go out from combat or a chat lockdown: the game blocks them
     ns.SendChatAuto("craft-answer-" .. (target or channel), text, channel, target)
 end
@@ -396,34 +408,49 @@ local function parseQuery(text)
 end
 
 ns.On("CHAT_MSG_GUILD", function(_, text, sender)
-    if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer then return end
+    if ns.IsSecret(text) or type(text) ~= "string" then return end
+    if not settings().answer then
+        if text:find("^%s*!") then dbg("heard \"%s\" – answers are switched off here", text) end
+        return
+    end
     local query, raw = parseQuery(text)
     if not query then return end
     -- dungeon names are the same in every client language and may be short ("!lg zf")
     local dungeon = dungeonQuestion(query)
-    if not dungeon and (#query < 3 or not englishClient()) then return end
+    dbg("heard \"%s\" from %s – question \"%s\", dungeon: %s, English client: %s", text, tostring(sender), query,
+        tostring(dungeon), tostring(englishClient()))
+    if not dungeon and (#query < 3 or not englishClient()) then dbg("not answered here (too short or not English)"); return end
     local key = Crafts.Normalize(query)
-    if recent[key] and GetTime() - recent[key] < REPEAT then return end
-    if pending[key] then return end
+    if recent[key] and GetTime() - recent[key] < REPEAT then
+        dbg("not again: \"%s\" was answered %d s ago (wait %d s)", key, GetTime() - recent[key], REPEAT); return
+    end
+    if pending[key] then dbg("already waiting for this question"); return end
     local token, delay = drawToken(query, raw)
+    dbg("my claim %d, sent in %.2f s", token, delay)
     pending[key] = { token = token }
     pending[key].timer = C_Timer.NewTimer(delay, function()
         local p = pending[key]
-        if not p then return end
-        if claims[key] and claims[key] < p.token then pending[key] = nil; return end
+        if not p then dbg("gave up: another client claimed first"); return end
+        if claims[key] and claims[key] < p.token then dbg("lost: claim %d is lower", claims[key]); pending[key] = nil; return end
         Comm.Send("CQ", { q = key, n = p.token }, "GUILD", { priority = "alert" })
+        dbg("claim sent – answering in 1.2 s unless someone claims lower")
         C_Timer.After(1.2, function()
             local still = pending[key]
             pending[key] = nil
-            if not still or (claims[key] and claims[key] < still.token) then return end
+            if not still or (claims[key] and claims[key] < still.token) then
+                dbg("lost after claiming (lowest claim %s)", tostring(claims[key])); return
+            end
             recent[key] = GetTime()
-            say(Craft.Reply(query, raw), "GUILD")
+            local ok, reply = pcall(Craft.Reply, query, raw)
+            if not ok then dbg("ERROR building the answer: %s", tostring(reply)); return end
+            say(reply, "GUILD")
         end)
     end)
 end)
 
-Comm.Register("CQ", function(data)
+Comm.Register("CQ", function(data, sender)
     if type(data.q) ~= "string" or type(data.n) ~= "number" then return end
+    dbg("claim %d for \"%s\" from %s", data.n, data.q, tostring(sender))
     if not claims[data.q] or data.n < claims[data.q] then claims[data.q] = data.n end
     recent[data.q] = GetTime()
     local p = pending[data.q]
