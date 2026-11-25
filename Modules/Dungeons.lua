@@ -14,31 +14,41 @@ local UI, Theme, L, Names, Comm = ns.UI, ns.Theme, ns.L, ns.Names, ns.Comm
 local Dungeons = ns.NewModule("dungeons")
 ns.Dungeons = Dungeons
 
--- Classic dungeons with their usual level range
+-- Classic dungeons and the new Forever dungeons (forever = true), sorted by level.
+-- Level range: the recommended levels (Forever ones as listed by AtlasLoot Forever).
 Dungeons.LIST = {
     { key = "rfc", short = "RFC", name = "Ragefire Chasm", min = 13, max = 18 },
+    { key = "thanes", short = "Thanes", name = "Hall of Thanes", min = 13, max = 18, forever = true },
+    { key = "lordaeron", short = "Lordaeron", name = "Ruins of Lordaeron", min = 13, max = 18, forever = true },
     { key = "wc", short = "WC", name = "Wailing Caverns", min = 17, max = 24 },
     { key = "vc", short = "VC", name = "The Deadmines", min = 17, max = 26 },
     { key = "sfk", short = "SFK", name = "Shadowfang Keep", min = 22, max = 30 },
     { key = "bfd", short = "BFD", name = "Blackfathom Deeps", min = 24, max = 32 },
     { key = "stocks", short = "Stocks", name = "The Stockade", min = 24, max = 32 },
+    { key = "excavation", short = "Excavation", name = "Excavation Site: Wetlands", min = 24, max = 29, forever = true },
+    { key = "smgy", short = "SM GY", name = "Scarlet Monastery: Graveyard", min = 26, max = 36 },
+    { key = "dalaran", short = "Dalaran", name = "City of Dalaran", min = 28, max = 33, forever = true },
     { key = "gnomer", short = "Gnomer", name = "Gnomeregan", min = 29, max = 38 },
     { key = "rfk", short = "RFK", name = "Razorfen Kraul", min = 29, max = 38 },
-    { key = "smgy", short = "SM GY", name = "Scarlet Monastery: Graveyard", min = 26, max = 36 },
     { key = "smlib", short = "SM Lib", name = "Scarlet Monastery: Library", min = 29, max = 39 },
     { key = "smarm", short = "SM Arm", name = "Scarlet Monastery: Armory", min = 32, max = 42 },
+    { key = "drowned", short = "Drowned", name = "The Drowned City", min = 35, max = 40, forever = true },
     { key = "smcath", short = "SM Cath", name = "Scarlet Monastery: Cathedral", min = 35, max = 45 },
     { key = "rfd", short = "RFD", name = "Razorfen Downs", min = 37, max = 46 },
+    { key = "kroldok", short = "Krol'dok", name = "Krol'dok Stronghold", min = 40, max = 45, forever = true },
     { key = "ulda", short = "Ulda", name = "Uldaman", min = 41, max = 51 },
     { key = "zf", short = "ZF", name = "Zul'Farrak", min = 44, max = 54 },
     { key = "mara", short = "Mara", name = "Maraudon", min = 46, max = 55 },
+    { key = "alcaz", short = "Alcaz", name = "Alcaz Prison", min = 48, max = 53, forever = true },
     { key = "st", short = "ST", name = "Sunken Temple", min = 50, max = 60 },
     { key = "brd", short = "BRD", name = "Blackrock Depths", min = 52, max = 60 },
+    { key = "blackmaw", short = "Blackmaw", name = "Blackmaw Hold", min = 55, max = 60, forever = true },
     { key = "lbrs", short = "LBRS", name = "Lower Blackrock Spire", min = 55, max = 60 },
-    { key = "ubrs", short = "UBRS", name = "Upper Blackrock Spire", min = 58, max = 60 },
     { key = "dme", short = "DM E", name = "Dire Maul East", min = 55, max = 60 },
     { key = "dmw", short = "DM W", name = "Dire Maul West", min = 57, max = 60 },
     { key = "dmn", short = "DM N", name = "Dire Maul North", min = 57, max = 60 },
+    { key = "ubrs", short = "UBRS", name = "Upper Blackrock Spire", min = 58, max = 60 },
+    { key = "shaper", short = "Shaper", name = "Shaper's Terrace", min = 58, max = 60, forever = true },
     { key = "stratl", short = "Strat Live", name = "Stratholme Live", min = 58, max = 60 },
     { key = "stratud", short = "Strat UD", name = "Stratholme Undead", min = 58, max = 60 },
     { key = "scholo", short = "Scholo", name = "Scholomance", min = 58, max = 60 },
@@ -501,6 +511,8 @@ Dungeons.state = state
 local function myLevel() return ns.Call(UnitLevel, "player") or 60 end
 local function fits(d, level) return level >= d.min - 2 and level <= d.max + 2 end
 local function levelText(d) return ("%d–%d"):format(d.min, d.max) end
+-- small tag behind the name of the new Forever dungeons
+local function foreverTag(d) return d.forever and ("  " .. Theme.HexColor("bronze", L.DG_FOREVER)) or "" end
 
 local function roleGlyph(r, size, dim)
     return UI.Glyph(ROLE_ICON[r] or "dot", dim and "muted" or ROLE_COLOR[r], size or 12)
@@ -564,14 +576,14 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         function(v) state.fits = v; find.Refresh() end, L.DG_FITS_TIP)
     fitsCheck:SetPoint("LEFT", onlineCheck, "RIGHT", 18, 0)
 
-    local LEFT_W = 290
+    local LEFT_W = 330
     local dList = UI.List(find, {
         rowHeight = 26, sortKey = "order",
         columns = {
             { key = "order", title = L.DG_COL_DUNGEON, flex = 1, minWidth = 120,
               text = function(r)
                   local c = counts[r.d.key]
-                  return Theme.HexColor((c and c.total > 0) and "text" or "textDim", r.d.name)
+                  return Theme.HexColor((c and c.total > 0) and "text" or "textDim", r.d.name) .. foreverTag(r.d)
               end,
               sort = function(r) return r.d.order end },
             { key = "level", title = L.COL_LEVEL, width = 54, align = "CENTER",
@@ -591,12 +603,13 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         -- the page search also finds players: their dungeons are marked
         searchText = function(r)
             local c = counts[r.d.key]
-            return r.d.name .. " " .. r.d.short .. " " .. (c and table.concat(c.names, " ") or "")
+            return r.d.name .. " " .. r.d.short .. (r.d.forever and " forever" or "") .. " " .. (c and table.concat(c.names, " ") or "")
         end,
         onEnter = function(frame, r)
             local c = counts[r.d.key] or { total = 0, online = 0, T = 0, H = 0, D = 0 }
             ns.TipOwner(frame, "ANCHOR_RIGHT")
             GameTooltip:AddLine(r.d.name)
+            if r.d.forever then GameTooltip:AddLine(L.DG_FOREVER_TIP, 0.75, 0.6, 0.4) end
             GameTooltip:AddLine(L.DG_TIP_LEVEL:format(levelText(r.d)), 0.7, 0.7, 0.7)
             GameTooltip:AddLine(L.DG_TIP_COUNT:format(c.total, c.online), 0.7, 0.7, 0.7)
             if c.total > 0 then
@@ -798,7 +811,7 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
                   set = function(r, v) state.mine = r.d.key; if v then Dungeons.Mark(r.d.key) else Dungeons.Unmark(r.d.key) end end,
                   tip = L.DG_TOGGLE_TIP } },
             { key = "order", title = L.DG_COL_DUNGEON, flex = 1, minWidth = 120,
-              text = function(r) return Theme.HexColor(Dungeons.MyEntry(r.d.key) and "text" or "textDim", r.d.name) end,
+              text = function(r) return Theme.HexColor(Dungeons.MyEntry(r.d.key) and "text" or "textDim", r.d.name) .. foreverTag(r.d) end,
               sort = function(r) return r.d.order end },
             { key = "level", title = L.COL_LEVEL, width = 54, align = "CENTER",
               text = function(r) return Theme.HexColor(fits(r.d, myLevel()) and "textDim" or "muted", levelText(r.d)) end,
@@ -815,7 +828,7 @@ UI.AddPage("dungeons", L.PAGE_DUNGEONS, 22, function(content, page)
         },
         onClick = function(r) if my.note then my.note:ClearFocus() end; state.mine = r.d.key; my.Refresh() end,
         isSelected = function(r) return r.d.key == state.mine end,
-        searchText = function(r) return r.d.name .. " " .. r.d.short end,
+        searchText = function(r) return r.d.name .. " " .. r.d.short .. (r.d.forever and " forever" or "") end,
     })
     mList:SetPoint("TOPLEFT", 0, 0)
     mList:SetPoint("BOTTOMRIGHT", -(EDIT_W + 14), 30)

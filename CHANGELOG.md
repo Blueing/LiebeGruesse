@@ -8,6 +8,7 @@ All notable changes to Liebe Grüße – Guild Tools. Newest first.
 - feat(dungeons): "Who wants to go" lists everyone per dungeon with role, items and note; online only, fits my level; click whispers (text prepared, not sent), right-click invites
 - feat(dungeons): wanted items show overlaps with other players of the same dungeon; items you get leave your list by themselves
 - feat(dungeons): marks run out after 14 days (7/30 selectable), "Renew" keeps them; synced to the guild on change and at login
+- feat(dungeons): the nine new Forever dungeons are in the list too (Hall of Thanes, Ruins of Lordaeron, Excavation Site: Wetlands, City of Dalaran, The Drowned City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold, Shaper's Terrace), sorted by level and tagged "Forever"
 - feat(test): /lg test lfg with made-up members
 
 ## [1.0.68] – 2026-11-25

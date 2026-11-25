@@ -912,6 +912,7 @@ local enUS12 = {
     DG_RENEW = "Renew", DG_REMOVE = "Remove mark", DG_SINCE = "marked %s",
     DG_IN_DAYS = "%d d left", DG_IN_HOURS = "%d h left",
     DG_UNKNOWN = "No dungeon matches “%s”.",
+    DG_FOREVER = "Forever", DG_FOREVER_TIP = "New dungeon of WoW Forever",
 }
 for k, v in pairs(enUS12) do enUS[k] = v end
 
