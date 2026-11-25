@@ -539,7 +539,17 @@ function Dungeons.HeardChat(text, sender)
     local isMe = Names.Same(key, Names.Me())
     local g = ns.Guild.Find(key)
     local level = (g and g.level) or (isMe and ns.Call(UnitLevel, "player")) or nil
-    local keys = Dungeons.ParseChat(text, level)
+    local keys
+    -- "!lg scholo": whoever asks who wants to go is looking for a group as well
+    local prefix = (ns.Database.Settings().craft or {}).prefix or "!lg"
+    local asked = text:match("^%s*" .. (prefix:gsub("%p", "%%%0")) .. "%s+(.+)$")
+    if asked then
+        local pick
+        keys, pick = Dungeons.ChatQuery(asked)
+        if keys and pick then keys = { bestFit(keys, level) } end
+    else
+        keys = Dungeons.ParseChat(text, level)
+    end
     if not keys then return end
     local now = ns.Now()
     local x = now + Dungeons.CHAT_HOURS * 3600
@@ -611,7 +621,8 @@ function Dungeons.ChatQuery(text)
     end
     for _, g in ipairs(GROUP_ALIASES) do
         for _, w in ipairs(g.words) do
-            if q == w then return g.keys or g.pick end
+            -- second result: a "pick" group (one of them is meant, e.g. "sm")
+            if q == w then return g.keys or g.pick, g.pick ~= nil end
         end
     end
     return nil
