@@ -709,84 +709,29 @@ end
 
 local function answersOn() return settings().answer ~= false and ns.Database.Settings().modules.dungeons ~= false end
 
--- clients whose chat lines the game blocks stay out of the election for a while
-local BLOCK_DAYS = 3
-local lastSend      -- GetTime() of our last answer
-function Dungeons.CannotSend()
-    local t = ns.Database.Char().lfgSendBlocked
-    return type(t) == "number" and ns.Now() - t < BLOCK_DAYS * 86400
-end
+-- blocked chat lines, the local answer and its post link: Core/AutoPost.lua
+function Dungeons.CannotSend() return ns.AutoPost.Blocked("lfg") end
 function Dungeons.ResetSendBlock()
-    ns.Database.Char().lfgSendBlocked = nil
-    ns.Print(L.DG_RETRY)
+    ns.AutoPost.Reset()
+    ns.Print(L.AUTOPOST_RETRY)
 end
-
-ns.On("ADDON_ACTION_BLOCKED", function(_, addon, func)
-    if addon ~= ns.name or not lastSend or GetTime() - lastSend > 3 then return end
-    local first = not Dungeons.CannotSend()
-    ns.Database.Char().lfgSendBlocked = ns.Now()
-    lastSend = nil
-    dbg("the game BLOCKED the chat line (%s) – this client stops answering for %d days", tostring(func), BLOCK_DAYS)
-    if first then ns.Print(L.DG_SEND_BLOCKED:format(BLOCK_DAYS)) end
-end)
 
 local function sendAnswer(text, channel, target)
-    lastSend = GetTime()
     dbg("sending to %s: %s", channel, text)
-    if ns.SendChatAuto then ns.SendChatAuto("lfg-answer-" .. (target or channel), text, channel, target)
-    else ns.SendChat(text, channel, target) end
-end
-
--- The answer shown only to the asker carries a link "[Post in guild chat]".
--- A click is a hardware event, so the game lets the line go out even where it
--- blocks automatic ones. Clickable chat links: |Haddon:<type>:<data>|h…|h, the
--- click arrives through EventRegistry "SetItemRef" (hooksecurefunc on old clients).
-local LINK_TYPE = "LiebeGruesseLFG"
-local posts, postId = {}, 0
-
-local function showLocally(text)
-    postId = postId + 1
-    posts[postId] = text
-    posts[postId - 20] = nil   -- only the last few stay clickable
-    local link = ("|cff66bbff|Haddon:%s:post:%d|h[%s]|h|r"):format(LINK_TYPE, postId, L.DG_POST_LINK)
-    ns.Print("%s |cff999999(%s)|r %s", text, L.DG_ONLY_YOU, link)
-end
-
-local function onLink(link)
-    if type(link) ~= "string" or ns.IsSecret(link) then return end
-    local id = tonumber(link:match("^addon:" .. LINK_TYPE .. ":post:(%d+)"))
-    local text = id and posts[id]
-    if not text then return end
-    posts[id] = nil   -- each answer is posted once
-    -- inside the click: the game lets this line through
-    if ns.SendChat(text, "GUILD") then dbg("posted after your click: %s", text) end
-end
-if EventRegistry and EventRegistry.RegisterCallback then
-    EventRegistry:RegisterCallback("SetItemRef", function(_, link) ns.Safe(onLink, link) end, Dungeons)
-elseif hooksecurefunc and SetItemRef then
-    hooksecurefunc("SetItemRef", function(link) ns.Safe(onLink, link) end)
+    ns.AutoPost.Send("lfg", text, channel, target)
 end
 
 -- the election
 local ASK_REPEAT = 30
 local askRecent, askPending, askClaims = {}, {}, {}
-local ownWait       -- our own question: shown locally unless an answer shows up in guild chat
 
 local function onAsk(text, sender)
     local q = parseAsk(text)
     if not q then return end
     local key = normalize(q):match("^%s*(.-)%s*$")
     if key == "" then key = "*" end
-    if Names.IsMe(sender) then
-        local wait = { key = key }
-        ownWait = wait
-        C_Timer.After(4, function()
-            if ownWait ~= wait then return end
-            ownWait = nil
-            dbg("no answer in guild chat – shown only to you")
-            showLocally("[LG] " .. replyFor(q))
-        end)
-    end
+    -- our own question: shown to us when no answer shows up in guild chat
+    if Names.IsMe(sender) then ns.AutoPost.WatchOwn(function() return "[LG] " .. replyFor(q) end) end
     if not answersOn() then dbg("answers are switched off here"); return end
     if Dungeons.CannotSend() then dbg("not taking part: the game blocked this client's chat lines lately"); return end
     if askRecent[key] and GetTime() - askRecent[key] < ASK_REPEAT then
@@ -828,8 +773,6 @@ end)
 
 ns.On("CHAT_MSG_GUILD", function(_, text, sender)
     if ns.IsSecret(text) or ns.IsSecret(sender) or type(text) ~= "string" or type(sender) ~= "string" then return end
-    -- an answer showed up: our own question needs no local line
-    if ownWait and text:find("^%[LG%]") then ownWait = nil end
     onAsk(text, sender)
 end)
 

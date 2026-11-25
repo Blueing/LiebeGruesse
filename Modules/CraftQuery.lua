@@ -339,7 +339,8 @@ end
 local function say(text, channel, target)
     text = "[LG] " .. text
     -- automatic answers never go out from combat or a chat lockdown: the game blocks them
-    ns.SendChatAuto("craft-answer-" .. (target or channel), text, channel, target)
+    -- (Core/AutoPost.lua also notices when the game blocks this client's lines)
+    ns.AutoPost.Send("craft", text, channel, target)
 end
 
 -- election token: lower wins. Out of combat and with recipe data first.
@@ -378,6 +379,10 @@ ns.On("CHAT_MSG_GUILD", function(_, text, sender)
     if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
     local query, raw = parseQuery(text)
     if not query or #query < 3 then return end
+    -- our own question: shown to us (with "[Post in guild chat]") when no answer shows up
+    if Names.IsMe(sender) then ns.AutoPost.WatchOwn(function() return "[LG] " .. Craft.Reply(query, raw) end) end
+    -- a client whose chat lines the game blocks lets the others answer
+    if ns.AutoPost.Blocked("craft") then return end
     local key = Crafts.Normalize(query)
     if recent[key] and GetTime() - recent[key] < REPEAT then return end
     if pending[key] then return end
@@ -414,5 +419,6 @@ end)
 ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
     if ns.IsSecret(text) or type(text) ~= "string" or not settings().answer or not englishClient() then return end
     local query, raw = parseQuery(text)
+    if ns.AutoPost.Blocked("craft") then return end
     if query and #query >= 3 then say(Craft.Reply(query, raw), "WHISPER", sender) end
 end)

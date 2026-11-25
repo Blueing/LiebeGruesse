@@ -14,7 +14,8 @@ All notable changes to Liebe Grüße – Guild Tools. Newest first.
 - feat(dungeons): your own chat message makes a short mark of yours that is synced; marking or editing it turns it into a normal mark
 - feat(dungeons): "!lfg <dungeon>" in guild chat or as a whisper ("!lfg ubrs", "!lfg strat ud", also short names like "!lfg zf") – exactly one addon user answers who wants to run it, online first with role; "!lfg" alone lists the most wanted dungeons; whoever asks counts as looking for a group too (2 h) and is part of the answer; own election (message kind DE), !lg and the crafting answers are untouched; switch "Answer !lfg" under My interest
 - feat(dungeons): when the game blocks a client's automatic chat line (ADDON_ACTION_BLOCKED), that client stops answering !lfg for 3 days so another member answers; your own question is shown to you in your chat window when no answer shows up in guild chat, with a link "[Post in guild chat]" – one click posts it (a click is allowed where automatic lines are blocked)
-- feat(test): /lg test lfg with made-up members, /lg test lfgask [dungeon] shows the !lfg answer, /lg test lfgchat [text] shows what is read from a chat message, /lg test lfgdebug and /lg test lfgretry
+- fix(crafts): the same for !lg – a client whose chat lines the game blocks lets the others answer for 3 days; your own !lg question is shown to you with "[Post in guild chat]" when no answer shows up (shared code in Core/AutoPost.lua, a few lines in CraftQuery.lua)
+- feat(test): /lg test lfg with made-up members, /lg test lfgask [dungeon] shows the !lfg answer, /lg test lfgchat [text] shows what is read from a chat message, /lg test lfgdebug and /lg test chatretry
 
 ## [1.0.68] – 2026-11-25
 
