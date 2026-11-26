@@ -1369,7 +1369,7 @@ function UI.Form(parent)
     function form:Section(title, opts)
         opts = opts or {}
         local section = { rows = {}, collapsed = opts.collapsed or false, wide = opts.wide, grid = opts.grid,
-            show = opts.show, title = title or "" }
+            show = opts.show, title = title or "", locked = opts.locked, lockTip = opts.lockTip }
         section.card = UI.Panel(body, "panel", "borderDim")
         section.card:SetFrameLevel(body:GetFrameLevel() + 1)
         local head = CreateFrame("Button", nil, body)
@@ -1381,6 +1381,10 @@ function UI.Form(parent)
         head.text:SetText(title or "")
         head.chevron = UI.Icon(head, "chevron-down", 12, "muted")
         head.chevron:SetPoint("RIGHT", -14, 0)
+        -- read-only card (opts.locked): a small lock left of the chevron
+        head.lock = UI.Icon(head, "lock", 12, "muted")
+        head.lock:SetPoint("RIGHT", head.chevron, "LEFT", -8, 0)
+        head.lock:Hide()
         head.hover = UI.Fill(head, "hover", "BACKGROUND")
         head.hover:SetPoint("TOPLEFT", 1, -1); head.hover:SetPoint("BOTTOMRIGHT", -1, 0)
         head.hover:Hide()
@@ -1462,6 +1466,33 @@ function UI.Form(parent)
             e.Refresh = function(self) if not self:HasFocus() then self:SetText(get() or "") end end
             return add(row, e, o)
         end
+        -- read-only value: label left, text right (clipped); o.tipFn = dynamic tooltip lines
+        function section:Info(label, valueFn, o)
+            o = o or {}
+            local row = newRow(label, o)
+            local lw = o.labelWidth or 130
+            row.label:ClearAllPoints()
+            row.label:SetPoint("LEFT", 16, 0)
+            row.label:SetWidth(lw)
+            row.label:SetTextColor(Theme.Color("textDim"))
+            local value = UI.Text(row, 12, "text", "RIGHT")
+            value:SetPoint("LEFT", row, "LEFT", 16 + lw + 10, 0)
+            value:SetPoint("RIGHT", -14, 0)
+            row.value = value
+            if o.tipFn then
+                row:SetScript("OnEnter", function(self)
+                    self.hover:Show()
+                    local lines = {}
+                    for line in tostring(o.tipFn() or ""):gmatch("[^\n]+") do lines[#lines + 1] = line end
+                    UI.Tooltip(self, label, lines)
+                end)
+                row:SetScript("OnLeave", function(self) self.hover:Hide(); GameTooltip:Hide() end)
+            end
+            local control = { Refresh = function() value:SetText(ns.Try(valueFn) or "") end }
+            add(row, control, o)
+            control.Refresh()
+            return value, row
+        end
         function section:Buttons(list, o)
             o = o or {}
             o.col = o.col or 0
@@ -1521,6 +1552,39 @@ function UI.Form(parent)
         return section
     end
 
+    -- Read-only rows: Section(title, { locked = fn, lockTip = text }) or a row's
+    -- opts.locked / opts.lockTip. A locked row is dimmed and covered by a shield
+    -- that explains who may change it (never a silent, dead control).
+    local function applyLocks(section, rows)
+        local sectionLocked = section.locked and section.locked() or false
+        if section.head.lock then section.head.lock:SetShown(sectionLocked) end
+        for _, row in ipairs(rows) do
+            local o = row.opts or {}
+            local locked = sectionLocked and not o.unlocked or (o.locked and o.locked()) or false
+            if locked and not row.shield then
+                local shield = CreateFrame("Button", nil, row)
+                shield:SetAllPoints()
+                shield:SetFrameLevel(row:GetFrameLevel() + 20)
+                shield:SetScript("OnEnter", function(self)
+                    if row.hover then row.hover:Show() end
+                    UI.Tooltip(self, row.labelText or row.searchTitle or section.title, { self.tipText })
+                end)
+                shield:SetScript("OnLeave", function() if row.hover then row.hover:Hide() end; GameTooltip:Hide() end)
+                row.shield = shield
+            end
+            if row.shield then
+                row.shield.tipText = o.lockTip or section.lockTip or ns.L.LOCKED_TIP
+                row.shield:SetShown(locked)
+            end
+            local target = (row.control and row.control ~= row) and row.control or nil
+            if target and target.SetAlpha then target:SetAlpha(locked and 0.4 or 1)
+            elseif row.custom or row.buttons then
+                for _, b in ipairs(row.buttons or {}) do b:SetAlpha(locked and 0.4 or 1) end
+                if row.custom then row:SetAlpha(locked and 0.55 or 1) end
+            end
+        end
+    end
+
     function form:Layout()
         local width = body:GetWidth() or 1000
         local two = width >= 700
@@ -1535,6 +1599,7 @@ function UI.Form(parent)
                 row:SetShown(visible)
                 if visible then visibleRows[#visibleRows + 1] = row end
             end
+            applyLocks(section, visibleRows)
             -- a search hides cards without a match; opts.show hides a whole card
             local skip = (filtering and #visibleRows == 0) or (section.show and not section.show())
             if skip then for _, row in ipairs(section.rows) do row:Hide() end end

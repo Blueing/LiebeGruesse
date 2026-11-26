@@ -534,7 +534,7 @@ local function drawToken(query, raw)
 end
 
 local function parseQuery(text)
-    local prefix = settings().prefix or "!lg"
+    local prefix = ns.Admin and ns.Admin.CraftPrefix() or "!lg"
     local raw = text:match("^%s*" .. prefix:gsub("%p", "%%%0") .. "%s+(.+)$")
     if not raw then return nil end
     return clean(raw), raw

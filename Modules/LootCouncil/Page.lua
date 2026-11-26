@@ -279,13 +279,28 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     form.scroll:SetPoint("TOPLEFT")
     form.scroll:SetPoint("BOTTOMRIGHT", -8, 0)
     local function cfg() return Council.Config() end
+    -- the shared setup is the same for the whole guild: read-only unless officer or council
+    local readOnly = function() return not ns.Admin.CanEditLC() end
+    local LOCK = { locked = readOnly, lockTip = L.ADM_LC_ONLY }
+
+    -- shared setup: who changed it last, read-only notice, send again
+    local shared = form:Section(L.ADM_LC_SHARED, { wide = true })
+    shared:Note(L.ADM_LC_SHARED_HINT, { height = 30 })
+    shared:Info(L.ADM_LAST_CHANGE, function() return ns.Admin.ChangedBy(cfg().t, cfg().by, L.ADM_LC_NEVER) end)
+    shared:Info(L.ADM_LC_YOU, function()
+        return readOnly() and Theme.HexColor("muted", L.ADM_LC_READONLY) or Theme.HexColor("good", L.ADM_LC_EDITABLE)
+    end, { col = 2 })
+    shared:Buttons({
+        { L.ADM_LC_RESEND, function() Council.ShareConfig() end, width = 190, icon = "users", tip = L.ADM_LC_RESEND_TIP },
+        { L.PAGE_ADMIN, function() ns.Window.Show("admin") end, width = 150, icon = "shield", tip = L.ADM_OPEN_TIP },
+    }, { locked = readOnly, lockTip = L.ADM_LC_ONLY })
 
     -- your own popup (raiders): not part of the shared council setup
     local mine = form:Section(L.LC_MY_POPUP)
     mine:Toggle(L.LC_AUTOPASS, function() return ns.Database.Settings().lcAutoPass end,
         function(v) ns.Database.Settings().lcAutoPass = v end, { tip = L.LC_AUTOPASS_TIP })
 
-    local who = form:Section(L.LC_ROLES)
+    local who = form:Section(L.LC_ROLES, LOCK)
     who:Dropdown(L.LC_COUNCIL_RANK, function()
         local items = {}
         for i = 0, 9 do
@@ -299,9 +314,9 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
         function(v) cfg().names = parseNames(v); changed() end, { placeholder = L.LC_NAMES_PLACEHOLDER, tip = L.LC_EXTRA_NAMES })
     who:Edit(L.LC_LOOT_MASTER_SHORT, function() return cfg().lootMaster end,
         function(v) cfg().lootMaster = v or ""; changed() end, { col = 2, placeholder = L.LC_LOOT_MASTER_PLACEHOLDER, tip = L.LC_LOOT_MASTER })
-    local _, statusRow = who:Note("", { height = 34 })
+    local _, statusRow = who:Note("", { height = 34, unlocked = true })
 
-    local rules = form:Section(L.LC_RULES)
+    local rules = form:Section(L.LC_RULES, LOCK)
     rules:Dropdown(L.LC_QUALITY, function()
         local items = {}
         for q = 2, 5 do
@@ -340,8 +355,8 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     itemsSec:Toggle(L.LC_BAG_BOE, function() return q().boe end, function(v) q().boe = v end, { tip = L.LC_BAG_BOE_TIP })
     itemsSec:Buttons({ { L.LC_OPEN_QUEUE, function() ns.CouncilWindow.ShowQueue() end } }, { col = 2 })
 
-    local answers = form:Section(L.LC_RESPONSES)
-    answers:Note(L.LC_RESPONSES_HINT)
+    local answers = form:Section(L.LC_RESPONSES, LOCK)
+    answers:Note(L.LC_RESPONSES_HINT, { unlocked = true })
     for i = 1, 8 do
         local exists = function() return cfg().responses[i] ~= nil end
         local row = CreateFrame("Frame", nil, form.body)
@@ -432,7 +447,8 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     local ann = form:Section(L.LC_ANNOUNCE_SECTION)
     ann:Segment(L.LC_ANNOUNCE_CHANNEL, { { value = "RAID", text = L.LC_CH_RAID }, { value = "RAID_WARNING", text = L.LC_CH_RW },
         { value = "NONE", text = L.LC_CH_NONE } }, function() return cfg().announce == false and "NONE" or (cfg().announceChannel or "RAID") end,
-        function(v) cfg().announce = v ~= "NONE"; cfg().announceChannel = v; changed() end, { col = 0, width = 330, tip = L.LC_ANNOUNCE_CHANNEL_TIP })
+        function(v) cfg().announce = v ~= "NONE"; cfg().announceChannel = v; changed() end, { col = 0, width = 330, tip = L.LC_ANNOUNCE_CHANNEL_TIP,
+            locked = readOnly, lockTip = L.ADM_LC_ONLY })
     ns.Messages.Rows(ann, { "lcAward", "lcRoll" })
 
     -- loot master options (personal)
@@ -483,15 +499,15 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     page.ShowSettings = ns.CouncilPage.ShowSetup
     page.OnShow = function()
         -- only the council (rank, names, loot master) may send the setup to the guild
-        toolbar.buttons[4]:SetShown(Council.IsCouncilMember(ns.Names.Me()))
+        toolbar.buttons[4]:SetShown(ns.Admin.CanEditLC())
         toolbar:Fit()
         tabs[bar.current].Refresh()
     end
 end, { section = "raid", icon = "gem", module = "council", visible = function() return Council.PageAllowed() end })
 
--- Who sees the page: guild master, officers and the council (rank, names,
--- loot master). Raiders keep the answer popup; their one option (auto pass)
--- is on the Modules page then. Switch: Modules › Loot council.
+-- Who sees the page: everyone by default (1.0.84) – members get the history and
+-- the shared setup read-only. Modules › Loot council can hide it for anyone but
+-- the guild master, officers and the council (auto pass moves to Modules then).
 function Council.PageAllowed()
     if ns.Database.Settings().modules.councilOnlyMembers == false then return true end
     local me = Names.Me()
@@ -507,6 +523,7 @@ local function recheck()
 end
 ns.On("LG_ROSTER", recheck)
 ns.On("LG_COUNCIL", recheck)
+ns.On("LG_ADMIN", recheck)
 ns.On("LG_READY", recheck)
 
 ns.On("LG_ITEMS", function() ns.Window.Refresh("council") end)

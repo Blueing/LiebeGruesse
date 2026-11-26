@@ -66,8 +66,16 @@ function Council.RemoveResponse(index)
     Council.ConfigChanged()
 end
 
+-- Every change of the shared setup goes to the whole guild (a few seconds
+-- after the last change). Only the guild master, officers and the council
+-- may change it (the settings are read-only for everyone else).
 function Council.ConfigChanged()
-    Council.Config().t = ns.Now()
+    local cfg = Council.Config()
+    cfg.t, cfg.by = ns.Now(), Names.Me()
+    ns.Fire("LG_COUNCIL")
+    if ns.Admin and ns.Admin.CanEditLC() then
+        ns.Debounce("lc-config-push", 3, function() Council.ShareConfig(true) end)
+    end
 end
 
 -- Is `key` a council member under `cfg`?
@@ -796,24 +804,91 @@ Comm.Register("LF", function(data, sender)
     ns.Fire("LG_COUNCIL_START", s)
 end)
 
--- Config sharing with the guild (only accepted from council members)
-function Council.ShareConfig()
+-- Config sharing with the guild: sent by the guild master, officers or the
+-- council; taken from officers (rank) or council members (own setup) when newer.
+-- silent: automatic (after a change, answer to a login query)
+function Council.ShareConfig(silent)
     local cfg = Council.Config()
-    if not Council.IsCouncilMember(Names.Me(), cfg) then ns.Print(L.LC_SHARE_DENIED); return end
+    if not (ns.Admin and ns.Admin.CanEditLC()) then
+        if not silent then ns.Print(L.LC_SHARE_DENIED) end
+        return false
+    end
+    if not IsInGuild() then return false end
     if cfg.t == 0 then cfg.t = ns.Now() end
+    cfg.by = cfg.by or Names.Me()
+    Comm.Answered("lcc")
     Comm.Send("LCC", { cfg = cfg }, "GUILD", { priority = "normal" })
-    ns.Print(L.LC_SHARED)
+    if not silent then ns.Print(L.LC_SHARED) end
+    return true
 end
 
-Comm.Register("LCC", function(data, sender)
-    local cfg = data.cfg
-    if type(cfg) ~= "table" or type(cfg.responses) ~= "table" then return end
+local CHANNELS = { RAID = true, RAID_WARNING = true, NONE = true }
+local function str(v, max)
+    if type(v) ~= "string" then return nil end
+    v = v:gsub("|", "")
+    if #v > max then v = v:sub(1, max) end
+    return v
+end
+local function num(v, lo, hi, default)
+    v = tonumber(v)
+    if not v or v ~= v then return default end
+    return math.max(lo, math.min(hi, math.floor(v)))
+end
+local function flag(v, default) if v == nil then return default end return v == true end
+
+-- A received setup: only known fields, checked types and sizes (nil when unusable)
+function Council.CleanConfig(cfg)
+    if type(cfg) ~= "table" or type(cfg.responses) ~= "table" then return nil end
+    local out = {
+        minRank = num(cfg.minRank, -1, 9, 1), quality = num(cfg.quality, 0, 5, 4), timeout = num(cfg.timeout, 30, 600, 120),
+        lootMaster = str(cfg.lootMaster, 60) or "", announce = flag(cfg.announce, true), multiVote = flag(cfg.multiVote, false),
+        selfVote = flag(cfg.selfVote, true), rolls = flag(cfg.rolls, true), whispers = flag(cfg.whispers, true),
+        announceChannel = CHANNELS[cfg.announceChannel] and cfg.announceChannel or nil,
+        t = tonumber(cfg.t) or 0, by = str(cfg.by, 60), names = {}, reasons = {}, responses = {},
+    }
+    if type(cfg.names) == "table" then
+        for _, n in ipairs(cfg.names) do
+            local key = str(n, 60)
+            if key and key ~= "" and #out.names < 40 then out.names[#out.names + 1] = key end
+        end
+    end
+    if type(cfg.reasons) == "table" then
+        for _, r in ipairs(cfg.reasons) do
+            local text = str(r, 40)
+            if text and text ~= "" and #out.reasons < 10 then out.reasons[#out.reasons + 1] = text end
+        end
+    end
+    local keys = {}
+    for _, r in ipairs(cfg.responses) do
+        if type(r) == "table" and #out.responses < 8 then
+            local k, text = str(r.k, 40), str(r.t, 30)
+            if k and k ~= "" and text and not keys[k] then
+                keys[k] = true
+                local c = type(r.c) == "table" and r.c or {}
+                local function ch(v) v = tonumber(v) or 1; return math.max(0, math.min(1, v)) end
+                out.responses[#out.responses + 1] = { k = k, t = text, c = { ch(c[1]), ch(c[2]), ch(c[3]) } }
+            end
+        end
+    end
+    if #out.responses < 2 then return nil end
+    return out
+end
+
+Comm.Register("LCC", function(data, sender, channel)
+    if channel ~= "GUILD" then return end
     local mine = Council.Config()
-    if not Council.IsCouncilMember(sender, mine) then return end
-    if (cfg.t or 0) <= (mine.t or 0) then return end
+    local t = tonumber(type(data.cfg) == "table" and data.cfg.t) or 0
+    -- somebody else already answered the login query with this (or a newer) setup
+    if t >= (mine.t or 0) then Comm.Answered("lcc") end
+    if t <= (mine.t or 0) or t > ns.Now() + 120 then return end
+    if not ns.Guild.IsOfficer(sender) and not Council.IsCouncilMember(sender, mine) then return end
+    local cfg = Council.CleanConfig(data.cfg)
+    if not cfg then return end
+    cfg.by = cfg.by or sender
     local gdb = ns.Database.Guild()
-    gdb.lc = cfg
+    gdb.lc = Council.Upgrade(cfg)
     ns.Print(L.LC_CONFIG_RECEIVED:format(Names.Display(sender)))
+    ns.Fire("LG_COUNCIL")
     ns.Window.Refresh("council")
 end)
 

@@ -44,7 +44,7 @@ function Test.Craft(query)
         local id = next(idx.recipes)
         query = id and ns.Crafts.Name(id) or "Netherweave"
     end
-    ns.Print(L.TEST_TAG .. " " .. (ns.Database.Settings().craft.prefix or "!lg") .. " " .. query .. "  >  " .. ns.CraftQuery.Answer(query))
+    ns.Print(L.TEST_TAG .. " " .. ns.Admin.CraftPrefix() .. " " .. query .. "  >  " .. ns.CraftQuery.Answer(query))
 end
 
 function Test.Life()
