@@ -2,8 +2,18 @@
 
 All notable changes to Liebe Grüße – Guild Tools. Newest first.
 
+## [1.0.84] – 2026-11-26
+
+- change(council): every member sees the loot council page again – the loot history and the council setup (who is on the council, rules, answer buttons) read-only; only the guild master, officers and the council can change it. Modules › Loot council can still hide the page for members
+
 ## [1.0.83] – 2026-11-26
 
+- feat(admin): new page Guild › Guild admin for the guild master, officers and the loot council – your role, officer ranks, the loot council setup, the craft prefix and who may do what, at a glance. /lg admin, /lg test admin
+- feat(admin): the guild master picks which guild ranks count as officers in the addon (announcements, deleting feed and loot entries, partner key, craft prefix, council setup) – the same for everyone
+- feat(admin): officers set the craft question prefix (default "!lg") for the whole guild – also in Professions › Settings; members on older versions keep "!lg"
+- change(council): the loot council setup (council, rules, answer buttons, announce channel) is the same for the whole guild – every change by the guild master, an officer or the council goes out by itself, members who were offline get it at their next login; for everyone else it is read-only
+- fix(council): a shared setup is now taken by new installs too (from officers) and is no longer blocked by an older local change; received setups are checked field by field
+- style(settings): read-only settings are dimmed with a lock on the card – hover them to see who may change them
 - change(qol): change your group role by hand and auto role pauses for the session – one line in chat, role checks are left to you; back after a talent swap (one line in chat), login, /reload or picking it again in General › Group role
 - fix(feed): profession milestones always show the English profession name, also from German clients
 - fix(comm): no more "No player named … is currently playing" lines – addon data for a player who just went offline is dropped instead of being sent piece by piece; he is skipped for 10 minutes or until he is back online. /lg test offline

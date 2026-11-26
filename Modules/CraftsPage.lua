@@ -606,7 +606,7 @@ function Page.Build(parent)
         local count = 0
         for _, r in ipairs(rows) do if r.kind == "recipe" then count = count + 1 end end
         f.SetHead(count)
-        if state.search ~= "" then tree:SetEmptyText(L.CRAFT_NOTHING_FOUND:format(ns.Database.Settings().craft.prefix or "!lg"))
+        if state.search ~= "" then tree:SetEmptyText(L.CRAFT_NOTHING_FOUND:format(ns.Admin.CraftPrefix()))
         elseif state.prof == FAV then tree:SetEmptyText(L.CRAFT_NO_FAVS)
         elseif Crafts.ProfInfo(state.prof) and Crafts.ProfInfo(state.prof).gather then tree:SetEmptyText(L.CRAFT_GATHER_ONLY)
         else tree:SetEmptyText(L.CRAFT_NO_RECIPES_PROF) end

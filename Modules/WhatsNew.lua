@@ -32,7 +32,7 @@ end
 
 -- readable area names for the commit scopes ("fix(ui): …" -> "Interface: …")
 local AREAS = {
-    ui = "Interface", roster = "Roster", armory = "Armory", compare = "Compare", partner = "Partner guild",
+    ui = "Interface", admin = "Guild admin", roster = "Roster", armory = "Armory", compare = "Compare", partner = "Partner guild",
     feed = "Guild feed", toast = "Notifications", notify = "Notifications", quick = "Quick actions", help = "Help", credits = "Credits",
     lc = "Loot Council", council = "Loot Council", cd = "Cooldowns", cooldowns = "Cooldowns", bless = "Blessings",
     blessings = "Blessings", crafts = "Professions", prof = "Professions", professions = "Professions", profsync = "Profession sync", trade = "Trade timer", test = "Test commands",

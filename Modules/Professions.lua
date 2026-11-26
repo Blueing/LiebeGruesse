@@ -496,9 +496,11 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
         local craft = form:Section(L.SET_CRAFT_SECTION)
         craft:Toggle(L.SET_CRAFT_ANSWER, function() return st().craft.answer end, function(v) st().craft.answer = v end,
             { tip = L.SET_CRAFT_ANSWER_TIP .. "\n\n" .. L.SET_CRAFT_HINT })
-        craft:Edit(L.SET_CRAFT_PREFIX, function() return st().craft.prefix end, function(v)
-            if v ~= "" then st().craft.prefix = v end
-        end, { width = 120 })
+        -- the prefix is the same for the whole guild: officers set it (also on Guild › Admin)
+        craft:Edit(L.SET_CRAFT_PREFIX, function() return ns.Admin.CraftPrefix() end, function(v)
+            if v ~= ns.Admin.CraftPrefix() then ns.Admin.SetPrefix(v); form:Refresh() end
+        end, { width = 120, tip = L.ADM_PREFIX_TIP, locked = function() return not ns.Admin.CanEditPrefix() end,
+            lockTip = L.ADM_PREFIX_ONLY_OFFICERS })
         -- "!lg" answers in the quick actions bar (a click posts them)
         ns.QuickBar.SettingsCard(form)
         local sync = form:Section(L.SET_PSYNC_SECTION)

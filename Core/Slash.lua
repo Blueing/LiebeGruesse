@@ -85,6 +85,8 @@ local GROUPS = {
           run = function(rest)
               if (rest or "") == "" then ns.Window.Show("notifications") else ns.Notify.Announce(rest, nil, true) end
           end },
+        { cmd = "admin", desc = "Guild admin: officer ranks, loot council setup, craft prefix, who may do what (guild master, officers, council)",
+          run = function() ns.Window.Show("admin") end },
         { cmd = "feed", desc = "Guild feed (loot, kills, level-ups …)",
           run = function() ns.Window.Show("feed") end },
         { cmd = "life", desc = "Life statistics window (yours)",
@@ -258,6 +260,8 @@ local GROUPS = {
         { cmd = "test notify", args = "[lvl|loot|boss|prof|first|join]",
           desc = "Milestone notifications (level, epic loot, new member)",
           run = function(rest) ns.Notify.Test(rest ~= "" and rest or nil) end },
+        { cmd = "test admin", desc = "Guild admin: your role, officer ranks, craft prefix and council setup this client knows (nothing sent)",
+          run = function() ns.Admin.Test() end },
         { cmd = "test announce", args = "[text]", desc = "How an officer announcement looks (only for you, nothing sent)",
           run = function(rest) ns.Notify.TestAnnounce(rest) end },
         { cmd = "test quick", args = "[off]", desc = "Sample lines in the quick actions bar (a click only prints, nothing is sent)",

@@ -71,16 +71,44 @@ end
 
 function Guild.IsMember(key) return Guild.Find(key) ~= nil end
 
--- officers: rank 0 (guild master) and 1; our own rank comes from the game directly
-local OFFICER_RANK = 1
-function Guild.IsOfficer(key)
-    if not key then return false end
-    if ns.Names.Same(key, ns.Names.Me()) then
-        local index = Guild.MyRankIndex()
-        return type(index) == "number" and index <= OFFICER_RANK
-    end
+-- Officer ranks: set by the guild master for the whole guild (Admin page,
+-- synced with "GS"); without a setting rank 0 (guild master) and 1.
+-- The guild master's rank always counts.
+Guild.DEFAULT_OFFICER_RANKS = { [0] = true, [1] = true }
+function Guild.OfficerRanks()
+    local rules = ns.Database and ns.db and ns.Database.Guild().rules
+    local set = rules and rules.ranks
+    if type(set) ~= "table" then return Guild.DEFAULT_OFFICER_RANKS end
+    return set
+end
+
+function Guild.IsOfficerRank(index)
+    if type(index) ~= "number" then return false end
+    return index == 0 or Guild.OfficerRanks()[index] == true
+end
+
+-- our own rank comes from the game directly
+function Guild.RankIndexOf(key)
+    if not key then return nil end
+    if ns.Names.Same(key, ns.Names.Me()) then return Guild.MyRankIndex() end
     local g = Guild.Find(key)
-    return g ~= nil and type(g.rankIndex) == "number" and g.rankIndex <= OFFICER_RANK
+    return g and g.rankIndex
+end
+
+function Guild.IsOfficer(key)
+    return Guild.IsOfficerRank(Guild.RankIndexOf(key))
+end
+
+function Guild.IsGuildMaster(key)
+    return Guild.RankIndexOf(key) == 0
+end
+
+-- key of the guild master (from the roster), or nil
+function Guild.MasterKey()
+    if Guild.MyRankIndex() == 0 then return ns.Names.Me() end
+    for key, m in pairs(Guild.members) do
+        if m.rankIndex == 0 then return key end
+    end
 end
 
 function Guild.MyRankIndex()
