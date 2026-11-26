@@ -490,24 +490,56 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
     cds:SetAllPoints()
     tabs.cds = cds
 
+    -- settings of the module: "!lg" answers and profession sync
+    local settingsTab = UI.SettingsPane(holder, function(form)
+        local function st() return ns.Database.Settings() end
+        local craft = form:Section(L.SET_CRAFT_SECTION)
+        craft:Toggle(L.SET_CRAFT_ANSWER, function() return st().craft.answer end, function(v) st().craft.answer = v end,
+            { tip = L.SET_CRAFT_ANSWER_TIP .. "\n\n" .. L.SET_CRAFT_HINT })
+        craft:Edit(L.SET_CRAFT_PREFIX, function() return st().craft.prefix end, function(v)
+            if v ~= "" then st().craft.prefix = v end
+        end, { width = 120 })
+        local sync = form:Section(L.SET_PSYNC_SECTION)
+        sync:Toggle(L.SET_PSYNC_CHAT, function() return ns.ProfSync.Settings().profSyncChat end,
+            function(v) ns.ProfSync.Settings().profSyncChat = v end, { tip = L.SET_PSYNC_CHAT_TIP })
+        sync:Toggle(L.SET_PSYNC_HINT, function() return ns.ProfSync.Settings().profSyncHint ~= false end,
+            function(v) ns.ProfSync.Settings().profSyncHint = v end, { tip = L.SET_PSYNC_HINT_TIP })
+        sync:Buttons({ { L.PSYNC_SHOW, function()
+            if #ns.ProfSync.All() == 0 then ns.Print(L.PSYNC_NONE) else ns.ProfSync.Show() end
+        end, width = 180, icon = "scroll-text" } })
+    end)
+    tabs.settings = settingsTab
+
     local bar = UI.SubTabs(content, {
-        { key = "guild", title = L.PROF_TAB_GUILD }, { key = "mine", title = L.PROF_TAB_MINE },
-        { key = "shop", title = L.SHOP_TAB }, { key = "cds", title = L.PCD_TAB },
+        { key = "guild", title = L.PROF_TAB_GUILD, icon = "users" }, { key = "mine", title = L.PROF_TAB_MINE, icon = "scroll-text" },
+        { key = "shop", title = L.SHOP_TAB, icon = "shopping-cart" }, { key = "cds", title = L.PCD_TAB, icon = "timer" },
+        { key = "settings", title = L.SETTINGS_TAB, icon = "settings", iconOnly = true },
     }, function(key)
         for k, t in pairs(tabs) do t:SetShown(k == key) end
         toolbar:SetShown(key == "mine")
-        source:SetShown(key ~= "cds"); sourceLabel:SetShown(key ~= "cds" and not source.compact)
-        cart:SetShown(key ~= "cds" and key ~= "shop")
+        local prices = key ~= "cds" and key ~= "settings"
+        source:SetShown(prices and not source.noRoom); sourceLabel:SetShown(prices and not source.compact and not source.noRoom)
+        cart:SetShown(prices and key ~= "shop" and not cart.noRoom)
         tabs[key].Refresh()
     end)
     bar:SetPoint("TOPLEFT")
     bar:SetPoint("TOPRIGHT")
     -- price source between the tabs and the page search: full, without label, or only an icon
     local function fitSource()
+        -- the tabs get what is left beside the page search (and room for the price source icon)
+        bar:Fit((content:GetWidth() or 900) - ns.Window.SearchReserve() - 12 - 40)
         local tabsW = 0
         for _, b in ipairs(bar.buttons) do tabsW = tabsW + (b:GetWidth() or 80) + 6 end
         cartRefresh()
         local free = (content:GetWidth() or 900) - ns.Window.SearchReserve() - tabsW - 12 - cart:GetWidth() - 10
+        local key = bar.current
+        -- very narrow: the cart button gives way (the shopping list tab has the same)
+        cart.noRoom = free < 30
+        if cart.noRoom then free = free + cart:GetWidth() + 10 end
+        -- and below the minimum width the price source too (it would cover a tab); wider window = back
+        source.noRoom = free < 30
+        source:SetShown(not source.noRoom and key ~= nil and key ~= "cds" and key ~= "settings")
+        cart:SetShown(not cart.noRoom and key ~= nil and key ~= "cds" and key ~= "shop" and key ~= "settings")
         local lw = (sourceLabel.GetUnboundedStringWidth and sourceLabel:GetUnboundedStringWidth()) or sourceLabel:GetStringWidth() or 40
         source.compact = nil
         source.label:Show()
@@ -539,6 +571,8 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
     bar:Select("guild")
     fitSource()
     Professions.ShowTab = function(key) bar:Select(key) end
+    page.ShowSettings = function() bar:Select("settings") end
+    settingsTab.form.reveal = page.ShowSettings
     -- header search: guild crafting (recipes, members) or your own recipes
     page.searchHint = L.CRAFT_SEARCH
     -- guild crafting and your own recipes are searched; the tab with hits opens

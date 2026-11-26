@@ -712,7 +712,14 @@ end
 local filter = "all"
 local KINDS = { "all", "lvl", "boss", "loot", "prof", "first", "join", "lc" }
 
-UI.AddPage("feed", L.PAGE_FEED, 20, function(content, page)
+UI.AddPage("feed", L.PAGE_FEED, 20, function(root, page)
+    -- tabs: the feed and its settings
+    local content, tabs = UI.PageWithSettings(root, page, L.FEED_TAB, function(form)
+        local st = ns.Database.Settings()
+        local s = form:Section(L.PAGE_FEED)
+        s:Toggle(L.SET_TOASTS, function() return st.toasts end, function(v) st.toasts = v end, { tip = L.SET_TOASTS_TIP })
+        s:Buttons({ { L.PAGE_NOTIFY, function() ns.Window.Show("notifications") end, width = 170, icon = "newspaper" } })
+    end)
     local list
     -- filter chips (one kind at a time); they end before the page search in the top right corner
     local items = {}
@@ -725,7 +732,7 @@ UI.AddPage("feed", L.PAGE_FEED, 20, function(content, page)
         if page.query and page.query ~= "" then list:ShowFirstHit(page.query) end
     end)
     chips:SetPoint("TOPLEFT")
-    chips:SetPoint("TOPRIGHT", content, "TOPRIGHT", -ns.Window.SearchReserve(), 0)
+    chips:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
     page.feedChips = chips
 
     list = UI.List(content, {
@@ -766,6 +773,7 @@ UI.AddPage("feed", L.PAGE_FEED, 20, function(content, page)
         chips:Refresh()
         list:SetEmptyText(filter == "all" and L.FEED_EMPTY or L.FEED_EMPTY_KIND:format(L["FEED_KIND_" .. filter]))
     end
+    tabs.Finish()
 end, { section = "guild", icon = "newspaper", module = "feed" })
 
 -- items load lazily: redraw the feed once their names arrive

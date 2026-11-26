@@ -1093,16 +1093,36 @@ function UI.SubTabs(parent, tabs, onSelect)
         b:SetHeight(28)
         b.text = UI.Text(b, 12, "muted", "CENTER")
         b.text:SetPoint("CENTER", 0, 1)
-        b.text:SetText(tab.title)
+        b.text:SetText(tab.iconOnly and "" or tab.title)
         local w = math.max(60, (b.text:GetStringWidth() or 0) + 28, #tab.title * 6.5 + 28)
+        -- icon-only tab (little room): the title shows in the tooltip
+        if tab.iconOnly and tab.icon then
+            b.icon = UI.Icon(b, tab.icon, 14, "muted")
+            b.icon:SetPoint("CENTER", 0, 1)
+            b.tipTitle = tab.title
+            w = 40
+        end
         b:SetWidth(w)
         b:SetPoint("LEFT", x, 0)
         x = x + w + 6
+        b.def, b.natural = tab, w
+        b.compact = tab.iconOnly and w or math.max(48, math.min(w, (b.text:GetStringWidth() or (#tab.title * 6)) + 14))
         b.line = UI.Fill(b, "accent", "ARTWORK")
         b.line:SetPoint("BOTTOMLEFT", 6, 0); b.line:SetPoint("BOTTOMRIGHT", -6, 0); b.line:SetHeight(2)
         b:SetScript("OnClick", function() bar:Select(tab.key) end)
-        b:SetScript("OnEnter", function(self) if bar.current ~= self.key then self.text:SetTextColor(Theme.Color("textDim")) end end)
-        b:SetScript("OnLeave", function(self) if bar.current ~= self.key then self.text:SetTextColor(Theme.Color("muted")) end end)
+        local function tint(self, role)
+            self.text:SetTextColor(Theme.Color(role))
+            if self.icon then self.icon:SetVertexColor(Theme.Color(role)) end
+        end
+        b.tint = tint
+        b:SetScript("OnEnter", function(self)
+            if bar.current ~= self.key then tint(self, "textDim") end
+            if self.tipTitle then UI.Tooltip(self, self.tipTitle) end
+        end)
+        b:SetScript("OnLeave", function(self)
+            if bar.current ~= self.key then tint(self, "muted") end
+            if self.tipTitle then GameTooltip:Hide() end
+        end)
         b.key = tab.key
         -- search hits in this tab (small accent number, top right)
         b.hits = UI.Text(b, 10, "accent", "LEFT", nil, true)
@@ -1121,17 +1141,54 @@ function UI.SubTabs(parent, tabs, onSelect)
     end
     local divider = UI.Divider(bar)
     divider:SetPoint("BOTTOMLEFT"); divider:SetPoint("BOTTOMRIGHT")
+    -- little room: narrower tabs first, then tabs with an icon show only the icon
+    -- (title in the tooltip). Returns the width the tabs take.
+    function bar:Fit(maxW)
+        local function apply(mode)
+            local x = 0
+            for _, b in ipairs(self.buttons) do
+                local def = b.def
+                local iconOnly = def.iconOnly or (mode == "icons" and def.icon ~= nil)
+                local w
+                if iconOnly then
+                    if not b.icon then b.icon = UI.Icon(b, def.icon, 14, "muted"); b.icon:SetPoint("CENTER", 0, 1) end
+                    b.icon:Show()
+                    b.text:SetText("")
+                    b.tipTitle = def.title
+                    w = 40
+                else
+                    if b.icon then b.icon:Hide() end
+                    b.text:SetText(def.title)
+                    b.tipTitle = nil
+                    w = (mode == "natural") and b.natural or b.compact
+                end
+                b:SetWidth(w)
+                b:ClearAllPoints()
+                b:SetPoint("LEFT", x, 0)
+                x = x + w + 6
+            end
+            return x - 6
+        end
+        local used
+        for _, mode in ipairs({ "natural", "compact", "icons" }) do
+            used = apply(mode)
+            self.mode = mode
+            if used <= maxW then break end
+        end
+        for _, b in ipairs(self.buttons) do b.tint(b, b.key == self.current and "text" or "muted") end
+        return used
+    end
     function bar:Select(key)
         self.current = key
         for _, b in ipairs(self.buttons) do
             local on = b.key == key
             b.line:SetShown(on)
-            b.text:SetTextColor(Theme.Color(on and "text" or "muted"))
+            b.tint(b, on and "text" or "muted")
         end
         ns.Safe(onSelect, key)
     end
     Theme.OnApply(function() if bar.current then
-        for _, b in ipairs(bar.buttons) do b.text:SetTextColor(Theme.Color(b.key == bar.current and "text" or "muted")) end
+        for _, b in ipairs(bar.buttons) do b.tint(b, b.key == bar.current and "text" or "muted") end
     end end)
     return bar
 end

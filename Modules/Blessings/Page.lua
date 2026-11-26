@@ -1,5 +1,5 @@
 -- Blessings page: assignment grid (paladin × class) with live buff status,
--- missing players, suggest / whisper / announce, and the bar settings.
+-- missing players, suggest / whisper / announce; settings of bar and sync in the tab "Settings".
 local _, ns = ...
 local UI, Theme, L, Names = ns.UI, ns.Theme, ns.L, ns.Names
 local B = ns.Blessings
@@ -21,7 +21,22 @@ local function blessingMenu(anchor, p, class)
     UI.OpenMenu(anchor, items, function(v) B.Set(p, class, v ~= "none" and v or nil) end, 190, p.set and p.set[class] or "none")
 end
 
-UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
+UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(root, page)
+    -- tabs: assignments and the settings of bar and sync
+    local content, tabs = UI.PageWithSettings(root, page, L.BLESS_ASSIGNMENTS, function(form)
+        local function o() return B.Settings() end
+        local function barUpdate() ns.AfterCombat("bless-bar", ns.BlessingsBar.Update) end
+        local bar = form:Section(L.BLESS_BAR)
+        bar:Toggle(L.BLESS_SHOW_BAR, function() return o().bar end, function(v) o().bar = v; barUpdate() end, { tip = L.BLESS_SHOW_BAR_TIP })
+        bar:Toggle(L.BLESS_RAID_ONLY, function() return o().raidOnly end, function(v) o().raidOnly = v; barUpdate() end)
+        bar:Toggle(L.BLESS_SOLO, function() return o().solo end, function(v) o().solo = v; barUpdate() end, { tip = L.BLESS_SOLO_TIP })
+        bar:Toggle(L.BLESS_LIVE, function() return o().live ~= false end, function(v) o().live = v; barUpdate() end, { tip = L.BLESS_LIVE_TIP })
+        local sync = form:Section(L.BLESS_SYNC)
+        sync:Toggle(L.BLESS_FREE, function() return o().freeAssign end, function(v) o().freeAssign = v; B.Share(B.Me()) end, { tip = L.BLESS_FREE_TIP })
+        -- PallyPower: guests without this addon (read) and sending to them (sync)
+        sync:Toggle(L.BLESS_PP_READ, function() return o().ppRead end, function(v) o().ppRead = v; if v then B.Request() end end, { tip = L.BLESS_PP_READ_TIP })
+        sync:Toggle(L.BLESS_PP_SYNC, function() return o().ppSync end, function(v) o().ppSync = v; if v then B.Share(B.Me()) end end, { tip = L.BLESS_PP_SYNC_TIP })
+    end)
     -- head: kicker, title, three counters
     local kicker = UI.Text(content, 10, "accent")
     kicker:SetPoint("TOPLEFT", 2, -2)
@@ -33,7 +48,7 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
         local c = CreateFrame("Frame", nil, content)
         c:SetSize(96, 46)
         -- the top right corner belongs to the page search
-        if i == 1 then c:SetPoint("TOPRIGHT", -ns.Window.SearchReserve(), 0) else c:SetPoint("RIGHT", counters[i - 1], "LEFT", -8, 0) end
+        if i == 1 then c:SetPoint("TOPRIGHT", 0, 0) else c:SetPoint("RIGHT", counters[i - 1], "LEFT", -8, 0) end
         c.value = UI.Text(c, 20, "text", "CENTER")
         c.value:SetPoint("TOP", 0, -2)
         c.label = UI.Text(c, 10, "muted", "CENTER")
@@ -60,26 +75,7 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
 
     local scroll, body = UI.ScrollArea(content)
     scroll:SetPoint("TOPLEFT", 0, -100)
-    scroll:SetPoint("BOTTOMRIGHT", -6, 64)
-
-    -- settings line at the bottom
-    local o = B.Settings()
-    local barCheck = UI.Check(content, L.BLESS_SHOW_BAR, function() return o.bar end, function(v) o.bar = v; ns.BlessingsBar.Update() end, L.BLESS_SHOW_BAR_TIP)
-    barCheck:SetPoint("BOTTOMLEFT", 0, 6)
-    local raidCheck = UI.Check(content, L.BLESS_RAID_ONLY, function() return o.raidOnly end, function(v) o.raidOnly = v; ns.BlessingsBar.Update() end)
-    raidCheck:SetPoint("LEFT", barCheck, "RIGHT", 18, 0)
-    local soloCheck = UI.Check(content, L.BLESS_SOLO, function() return o.solo end, function(v) o.solo = v; ns.BlessingsBar.Update() end, L.BLESS_SOLO_TIP)
-    soloCheck:SetPoint("LEFT", raidCheck, "RIGHT", 18, 0)
-    local freeCheck = UI.Check(content, L.BLESS_FREE, function() return o.freeAssign end, function(v) o.freeAssign = v; B.Share(B.Me()) end, L.BLESS_FREE_TIP)
-    freeCheck:SetPoint("LEFT", soloCheck, "RIGHT", 18, 0)
-    -- PallyPower: guests without this addon (read) and sending to them (sync)
-    -- (second row, above the others)
-    local ppRead = UI.Check(content, L.BLESS_PP_READ, function() return o.ppRead end,
-        function(v) o.ppRead = v; if v then B.Request() end end, L.BLESS_PP_READ_TIP)
-    ppRead:SetPoint("BOTTOMLEFT", 0, 32)
-    local ppSync = UI.Check(content, L.BLESS_PP_SYNC, function() return o.ppSync end,
-        function(v) o.ppSync = v; if v then B.Share(B.Me()) end end, L.BLESS_PP_SYNC_TIP)
-    ppSync:SetPoint("LEFT", ppRead, "RIGHT", 18, 0)
+    scroll:SetPoint("BOTTOMRIGHT", -6, 0)
 
     -- grid pieces are created on demand and reused
     local headCells, rowsUI, missUI = {}, {}, {}
@@ -164,7 +160,7 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
     local function draw()
         B.Rebuild()
         counters[1]:ClearAllPoints()
-        counters[1]:SetPoint("TOPRIGHT", -ns.Window.SearchReserve(), 0)
+        counters[1]:SetPoint("TOPRIGHT", 0, 0)
         local classes = {}
         -- solo: every class, so you can plan your own blessings before a group
         local solo = not IsInGroup() and not B.test
@@ -322,6 +318,7 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(content, page)
     end
     B.PageDraw = draw
     content:HookScript("OnSizeChanged", function() if content:IsVisible() then ns.Debounce("bless-page", 0.05, draw) end end)
+    tabs.Finish()
 end, { section = "raid", icon = "sparkles", module = "blessings" })
 
 ns.On("LG_BLESSINGS", function()

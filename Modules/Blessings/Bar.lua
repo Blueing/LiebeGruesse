@@ -44,8 +44,76 @@ end
 local function setSecure(button, attrs)
     if inCombat() then return false end
     if B.test then attrs = { type1 = false, type2 = false } end   -- test raiders: clicks cast nothing
-    for k, v in pairs(attrs) do button:SetAttribute(k, v or nil) end
+    button.lgAttrs = button.lgAttrs or {}
+    for k, v in pairs(attrs) do
+        button:SetAttribute(k, v or nil)
+        button.lgAttrs[k] = v or nil
+    end
     return true
+end
+-- current value of a secure attribute (the combat snippet below can change unit1/unit2)
+local function attr(button, key)
+    local v = button:GetAttribute(key)
+    if v == nil and button.lgAttrs then v = button.lgAttrs[key] end
+    return v
+end
+
+-- after a click: remember whom the blessing went to (auras are hidden in combat)
+local function noteClick(button, mouse)
+    local which = (mouse == "RightButton") and "2" or "1"
+    if attr(button, "type" .. which) ~= "spell" then return end
+    local unit, spell = attr(button, "unit" .. which), attr(button, "spell" .. which)
+    if unit and spell then B.NoteCastTarget(unit, spell) end
+end
+
+-- In combat the attributes are frozen, so a right-click would always hit the
+-- same player (and nothing at all once he is dead). This secure snippet runs
+-- before each click in combat: right-click steps through the class (players
+-- missing the blessing first), left-click only skips a dead target. Outside
+-- of combat it does nothing – the bar picks the target itself.
+local ROTATE = [[
+    if button ~= "LeftButton" and button ~= "RightButton" then return end
+    if not SecureCmdOptionParse("[combat] 1") then return end
+    local n = self:GetAttribute("lg-n") or 0
+    if n == 0 then return end
+    local which = (button == "RightButton") and "2" or "1"
+    if not self:GetAttribute("spell" .. which) then return end
+    local current = self:GetAttribute("unit" .. which)
+    if which == "1" and current and SecureCmdOptionParse("[@" .. current .. ",help,nodead] 1") then return end
+    local step = (which == "2") and (self:GetAttribute("lg-step") or 1) or 1
+    for i = 0, n - 1 do
+        local idx = (step - 1 + i) % n + 1
+        local unit = self:GetAttribute("lg-u" .. idx)
+        if unit and SecureCmdOptionParse("[@" .. unit .. ",help,nodead] 1") then
+            self:SetAttribute("unit" .. which, unit)
+            if which == "2" and not down then self:SetAttribute("lg-step", idx % n + 1) end
+            return
+        end
+    end
+]]
+local header
+local function wrapRotation(button)
+    if not (SecureHandlerWrapScript and SecureCmdOptionParse) then return end
+    if not header then
+        local ok, f = pcall(CreateFrame, "Frame", "LiebeGruesseBlessHeader", UIParent, "SecureHandlerBaseTemplate")
+        if not ok or not f then return end
+        header = f
+    end
+    pcall(SecureHandlerWrapScript, button, "OnClick", header, ROTATE)
+end
+-- the order for the combat snippet: the chosen target, then whoever misses
+-- the blessing, then the rest of the class
+local function rotation(button, class, first, needList)
+    local list, seen = {}, {}
+    local function add(u) if u and not seen[u] then seen[u] = true; list[#list + 1] = u end end
+    add(first)
+    for _, u in ipairs(needList or {}) do add(u) end
+    for _, u in ipairs(B.classUnits[class] or {}) do add(u) end
+    local old = button.lgRotation or 0
+    local attrs = { ["lg-n"] = #list, ["lg-step"] = 1 }
+    for i = 1, math.max(#list, old) do attrs["lg-u" .. i] = list[i] or false end
+    button.lgRotation = #list
+    setSecure(button, attrs)
 end
 
 local function fmtLeft(sec)
@@ -61,6 +129,9 @@ local function makeRow(i)
     local r = CreateFrame("Button", "LiebeGruesseBlessRow" .. i, frame, "SecureActionButtonTemplate")
     r:SetSize(WIDTH - 8, ROW_H - 2)
     r:RegisterForClicks("AnyUp", "AnyDown")
+    -- down and up: the cast follows the key-down setting, noting twice is harmless
+    r:HookScript("PostClick", function(self, mouse) noteClick(self, mouse) end)
+    wrapRotation(r)
     r.bg = UI.Fill(r, "rowAlt", "BACKGROUND"); r.bg:SetAllPoints()
     r.hl = UI.Fill(r, "hover", "HIGHLIGHT"); r.hl:SetAllPoints()
     r.mark = UI.Fill(r, "bad", "ARTWORK")
@@ -84,6 +155,10 @@ local function makeRow(i)
         GameTooltip:AddLine(ns.ClassIcon(self.cls, 14) .. " " .. cname, cr, cg, cb)
         GameTooltip:AddLine(B.Name(self.blessing) or "", 1, 0.82, 0)
         if self.absent then GameTooltip:AddLine(L.BLESS_ROW_ABSENT, 0.6, 0.6, 0.6, true) end
+        local st = B.status[self.cls]
+        if st and st.estimated and not self.absent then
+            GameTooltip:AddLine((ns.BlessNative and ns.BlessNative.Active()) and L.BLESS_ESTIMATED_LIVE or L.BLESS_ESTIMATED, 0.6, 0.6, 0.6, true)
+        end
         for _, m in ipairs(B.missing) do
             if m.class == self.cls then
                 for _, b in ipairs(m.list) do
@@ -154,6 +229,7 @@ local function create()
     -- registered for down and up (the cast follows the key-down setting):
     -- PostClick runs for both, the assignment only once on release
     auto:SetScript("PostClick", function(_, button, down)
+        if button == "LeftButton" then noteClick(auto, button) end
         if down then return end
         if button == "RightButton" and not inCombat() then
             if B.Suggest() then ns.Print(L.BLESS_SUGGESTED) end
@@ -172,6 +248,10 @@ local function create()
     frame.empty:SetPoint("TOPRIGHT", auto, "BOTTOMRIGHT", -2, -8)
     frame.empty:SetText(L.BLESS_BAR_EMPTY)
     ns.Movers.Attach("blessingsBar", frame)
+    -- the live strip lives outside the bar frame: hide it with the bar
+    frame:HookScript("OnHide", function()
+        if ns.BlessNative and not inCombat() then ns.Safe(ns.BlessNative.Layout, {}) end
+    end)
     return frame
 end
 
@@ -199,7 +279,8 @@ local function paintRow(r)
     r.bless:SetTexture(B.Icon(blessing))
     local left = st.left[blessing]
     if present then
-        r.count:SetText(Theme.HexColor(have >= total and "good" or "bad", ("%d/%d"):format(have, total)))
+        -- "~": aura data hidden (combat), the numbers are the last known state
+        r.count:SetText(Theme.HexColor(have >= total and "good" or "bad", ((st.estimated and "~" or "") .. "%d/%d"):format(have, total)))
         r.left:SetText(fmtLeft(left))
         r.left:SetTextColor(Theme.Color(left and left < 300 and "warn" or "good"))
     else
@@ -277,6 +358,7 @@ function Bar.Update()
                     type1 = (greater or single) and "spell" or nil, spell1 = greater or single, unit1 = greater and gUnit or sUnit,
                     type2 = single and "spell" or nil, spell2 = single, unit2 = sUnit,
                 })
+                rotation(r, class, sUnit, need)
                 -- the next cast: the class with the fewest buffed, then the shortest time left
                 if (have < total or (left and left < 300)) and (greater or single) then
                     local score = (total - have) * 10000 - (left or 0)
@@ -295,6 +377,17 @@ function Bar.Update()
     end
     if not combat then
         for i = n + 1, #rows do rows[i]:Hide() end
+        -- live status strip (drawn by the game, also in combat); prepared here
+        if ns.BlessNative then
+            local live = {}
+            if not B.test then
+                for i = 1, n do
+                    local r = rows[i]
+                    if not r.absent then live[#live + 1] = { row = r, units = B.classUnits[r.cls] or {}, blessing = r.blessing } end
+                end
+            end
+            ns.Safe(ns.BlessNative.Layout, live)
+        end
         setSecure(auto, { type1 = nextCast and "spell" or nil, spell1 = nextCast and nextCast.spell, unit1 = nextCast and nextCast.unit })
         frame.empty:SetShown(n == 0)
         frame:SetHeight(4 + 24 + 4 + 26 + 6 + math.max(n * ROW_H, n == 0 and 34 or 0) + 4)
@@ -303,6 +396,8 @@ function Bar.Update()
     frame.nextIcon:SetTexture(nextCast and B.Icon(nextCast.blessing) or nil)
     frame.nextIcon:SetShown(nextCast ~= nil)
 end
+
+function Bar.Shown() return frame ~= nil and frame:IsShown() end
 
 ns.On("LG_BLESSINGS", function() Bar.Update() end)
 ns.On("LG_MOVERS", function() ns.AfterCombat("bless-bar", Bar.Update) end)

@@ -4,13 +4,72 @@ local UI, Theme, L, Items, Names, Council = ns.UI, ns.Theme, ns.L, ns.Items, ns.
 
 local search = ""
 
+-- Raid evenings and council sessions: a record belongs to the evening of its
+-- date until 6 in the morning; its session is the council session it came from.
+local filter = { evening = "all", session = "all" }
+local function eveningKey(t) return date("%Y-%m-%d", (t or 0) - 6 * 3600) end
+local function sessionKey(r) return (tostring(r.id):match("^(.*):%d+$")) or tostring(r.id) end
+Council.EveningKey, Council.SessionKey = eveningKey, sessionKey
+
+local function allRecords()
+    local out = {}
+    for _, r in ipairs(ns.Database.Guild().lootHistory) do out[#out + 1] = r end
+    for _, r in ipairs(Council.testHistory or {}) do out[#out + 1] = r end
+    return out
+end
+
+-- evenings, newest first: { key, t, n, zone, sessions = { { key, t, n } } }
+local function evenings()
+    local byKey, list = {}, {}
+    for _, r in ipairs(allRecords()) do
+        local k = eveningKey(r.t)
+        local e = byKey[k]
+        if not e then
+            e = { key = k, t = r.t or 0, n = 0, zones = {}, sessions = {}, byS = {} }
+            byKey[k] = e
+            list[#list + 1] = e
+        end
+        e.n = e.n + 1
+        e.t = math.min(e.t, r.t or e.t)
+        if type(r.z) == "string" and r.z ~= "" then e.zones[r.z] = (e.zones[r.z] or 0) + 1 end
+        local sk = sessionKey(r)
+        local s = e.byS[sk]
+        if not s then s = { key = sk, t = r.t or 0, n = 0 }; e.byS[sk] = s; e.sessions[#e.sessions + 1] = s end
+        s.n = s.n + 1
+        s.t = math.min(s.t, r.t or s.t)
+    end
+    for _, e in ipairs(list) do
+        local best, bn = nil, 0
+        for z, n in pairs(e.zones) do if n > bn then best, bn = z, n end end
+        e.zone = best
+        table.sort(e.sessions, function(a, b) return a.t < b.t end)
+    end
+    table.sort(list, function(a, b) return a.t > b.t end)
+    return list, byKey
+end
+Council.Evenings = evenings
+
+local function inFilter(r)
+    if filter.evening ~= "all" and eveningKey(r.t) ~= filter.evening then return false end
+    if filter.session ~= "all" and sessionKey(r) ~= filter.session then return false end
+    return true
+end
+
 local function historyRows()
     local rows = {}
-    for _, r in ipairs(ns.Database.Guild().lootHistory) do
-        local info = Items.Info(r.i)
-        rows[#rows + 1] = { key = r.id, r = r, name = info and info.name or "" }
+    for _, r in ipairs(allRecords()) do
+        if inFilter(r) then
+            local info = Items.Info(r.i)
+            rows[#rows + 1] = { key = r.id, r = r, name = info and info.name or "" }
+        end
     end
     return rows
+end
+-- the records currently shown (export / share of one evening)
+local function shownRecords()
+    local out = {}
+    for _, row in ipairs(historyRows()) do if not row.r.testOnly then out[#out + 1] = row.r end end
+    return out
 end
 
 local function namesText(cfg)
@@ -53,11 +112,13 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     local searchBox = CreateFrame("Frame", nil, history)
     searchBox:SetSize(1, 24)
     searchBox:SetPoint("TOPLEFT")
-    local share = UI.Button(history, L.LC_SHARE_HISTORY, 170, 24, function() Council.ShareHistory(exportDays > 0 and exportDays or 3650) end, "users")
+    local share = UI.Button(history, L.LC_SHARE_HISTORY, 170, 24, function()
+        if exportDays == -1 then Council.ShareHistory(shownRecords()) else Council.ShareHistory(exportDays > 0 and exportDays or 3650) end
+    end, "users")
     share:SetPoint("TOPRIGHT")
     share.tip = { L.LC_SHARE_HISTORY_TIP }
     local export = UI.Button(history, L.LC_EXPORT, 120, 24, function()
-        local text, n = Council.HistoryExport(exportFormat, exportDays)
+        local text, n = Council.HistoryExport(exportFormat, exportDays == -1 and shownRecords() or exportDays)
         ns.Share.ShowText(L.LC_EXPORT_TITLE:format(n), L.LC_EXPORT_HINT, text)
     end, "scroll-text")
     export:SetPoint("RIGHT", share, "LEFT", -8, 0)
@@ -68,11 +129,91 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     end, function() return exportFormat end, function(v) exportFormat = v end)
     fmt:SetPoint("RIGHT", export, "LEFT", -8, 0)
     local range = UI.Dropdown(history, 120, function()
-        return { { value = 1, text = L.LC_RANGE_TODAY }, { value = 7, text = L.PERIOD_WEEK }, { value = 30, text = L.PERIOD_MONTH },
+        local items = { { value = 1, text = L.LC_RANGE_TODAY }, { value = 7, text = L.PERIOD_WEEK }, { value = 30, text = L.PERIOD_MONTH },
             { value = 0, text = L.PERIOD_ALL } }
+        if filter.evening ~= "all" then table.insert(items, 1, { value = -1, text = L.LC_RANGE_SHOWN }) end
+        return items
     end, function() return exportDays end, function(v) exportDays = v end)
     range:SetPoint("RIGHT", fmt, "LEFT", -8, 0)
-    local list = UI.List(history, {
+    -- filter: one raid evening, and within it one council session
+    local list
+    local eveningDD, sessionDD
+    local function eveningLabel(e)
+        return date("%a %d.%m.", e.t) .. (e.zone and ("  ·  " .. e.zone) or "") .. "  ·  " .. L.LC_N_ITEMS:format(e.n)
+    end
+    local function currentEvening()
+        if filter.evening == "all" then return nil end
+        local _, byKey = evenings()
+        return byKey[filter.evening]
+    end
+    local layoutTop
+    eveningDD = UI.Dropdown(history, 270, function()
+        local items = { { value = "all", text = L.LC_ALL_EVENINGS } }
+        for _, e in ipairs(evenings()) do items[#items + 1] = { value = e.key, text = eveningLabel(e) } end
+        return items
+    end, function() return filter.evening end, function(v)
+        filter.evening, filter.session = v, "all"
+        if v ~= "all" then exportDays = -1 elseif exportDays == -1 then exportDays = 7 end
+        range:Refresh()
+        history.Refresh()
+    end)
+    eveningDD.tip = { L.LC_EVENING_TIP }
+    sessionDD = UI.Dropdown(history, 170, function()
+        local items = { { value = "all", text = L.LC_ALL_SESSIONS } }
+        local e = currentEvening()
+        for _, s in ipairs(e and e.sessions or {}) do
+            items[#items + 1] = { value = s.key, text = date("%H:%M", s.t) .. "  ·  " .. L.LC_N_ITEMS:format(s.n) }
+        end
+        return items
+    end, function() return filter.session end, function(v) filter.session = v; history.Refresh() end)
+    sessionDD.tip = { L.LC_SESSION_TIP }
+
+    -- click on an entry: delete it, its session or its whole evening (for the guild)
+    local function deleteMenu(row)
+        local r = row.r
+        local info = Items.Info(r.i)
+        local entries = { { title = info and info.link or r.i } }
+        local function mine(records)
+            local out = {}
+            for _, x in ipairs(records) do if Council.CanDeleteRecord(x) then out[#out + 1] = x end end
+            return out
+        end
+        local function run(records)
+            local n = Council.RemoveHistory(records)
+            if n > 0 then ns.Print(L.LC_DELETED:format(n)) end
+        end
+        local can = Council.CanDeleteRecord(r)
+        entries[#entries + 1] = { text = L.LC_DELETE_ENTRY, disabled = not can,
+            tip = can and L.LC_DELETE_TIP or L.LC_DELETE_NOT_ALLOWED, func = function() run({ r }) end }
+        local ek, sk = eveningKey(r.t), sessionKey(r)
+        local sameEvening, sameSession = {}, {}
+        for _, x in ipairs(allRecords()) do
+            if eveningKey(x.t) == ek then
+                sameEvening[#sameEvening + 1] = x
+                if sessionKey(x) == sk then sameSession[#sameSession + 1] = x end
+            end
+        end
+        if #sameSession > 1 and #sameSession < #sameEvening then
+            local ok = mine(sameSession)
+            entries[#entries + 1] = { text = L.LC_DELETE_SESSION:format(#ok), disabled = #ok == 0,
+                tip = #ok > 0 and L.LC_DELETE_TIP or L.LC_DELETE_NOT_ALLOWED, func = function() run(ok) end }
+        end
+        if #sameEvening > 1 then
+            local ok = mine(sameEvening)
+            entries[#entries + 1] = { text = L.LC_DELETE_EVENING:format(date("%d.%m.", (r.t or 0) - 6 * 3600), #ok), disabled = #ok == 0,
+                tip = #ok > 0 and L.LC_DELETE_TIP or L.LC_DELETE_NOT_ALLOWED, func = function() run(ok) end }
+        end
+        entries[#entries + 1] = { divider = true }
+        entries[#entries + 1] = { text = L.LC_SHOW_EVENING, func = function()
+            filter.evening, filter.session = ek, "all"
+            exportDays = -1
+            eveningDD:Refresh(); range:Refresh()
+            history.Refresh()
+        end }
+        UI.ContextMenu(entries)
+    end
+
+    list = UI.List(history, {
         sortKey = "t", sortDesc = true,
         columns = {
             { key = "t", title = L.COL_DATE, width = 110, text = function(row) return Theme.HexColor("muted", ns.Date(row.r.t)) end,
@@ -90,11 +231,36 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
               sort = function(row) return row.r.v or 0 end },
         },
         onEnter = function(frame, row) Items.ShowTooltip(frame, row.r.i) end,
+        onClick = function(row) deleteMenu(row) end,
     })
-    list:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", 0, -10)
-    list:SetPoint("BOTTOMRIGHT")
     list:SetEmptyText(L.LC_HISTORY_EMPTY)
-    function history.Refresh() list:SetRows(historyRows()) end
+    -- filters next to the buttons when there is room, otherwise in a row of their own
+    layoutTop = function()
+        local e = currentEvening()
+        sessionDD:SetShown(e ~= nil and #e.sessions > 1)
+        local w = history:GetWidth() or 900
+        local need = 270 + (sessionDD:IsShown() and 178 or 0) + 16 + 120 + 8 + 110 + 8 + 120 + 8 + 170
+        eveningDD:ClearAllPoints()
+        local top
+        if w >= need then eveningDD:SetPoint("TOPLEFT", 0, 0); top = -34
+        else eveningDD:SetPoint("TOPLEFT", 0, -32); top = -66 end
+        sessionDD:ClearAllPoints()
+        sessionDD:SetPoint("LEFT", eveningDD, "RIGHT", 8, 0)
+        list:ClearAllPoints()
+        list:SetPoint("TOPLEFT", 0, top)
+        list:SetPoint("BOTTOMRIGHT")
+    end
+    history:HookScript("OnSizeChanged", function() layoutTop() end)
+    function history.Refresh()
+        -- a deleted evening or session disappears from the filter
+        local e = currentEvening()
+        if filter.evening ~= "all" and not e then filter.evening, filter.session = "all", "all"; if exportDays == -1 then exportDays = 7 end end
+        if e and filter.session ~= "all" and not e.byS[filter.session] then filter.session = "all" end
+        eveningDD:Refresh(); sessionDD:Refresh(); range:Refresh()
+        layoutTop()
+        list:SetRows(historyRows())
+    end
+    layoutTop()
     tabs.history = history
 
     -- setup
@@ -113,6 +279,11 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     form.scroll:SetPoint("TOPLEFT")
     form.scroll:SetPoint("BOTTOMRIGHT", -8, 0)
     local function cfg() return Council.Config() end
+
+    -- your own popup (raiders): not part of the shared council setup
+    local mine = form:Section(L.LC_MY_POPUP)
+    mine:Toggle(L.LC_AUTOPASS, function() return ns.Database.Settings().lcAutoPass end,
+        function(v) ns.Database.Settings().lcAutoPass = v end, { tip = L.LC_AUTOPASS_TIP })
 
     local who = form:Section(L.LC_ROLES)
     who:Dropdown(L.LC_COUNCIL_RANK, function()
@@ -297,7 +468,7 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     end
     tabs.setup = setup
 
-    local bar = UI.SubTabs(content, { { key = "history", title = L.LC_HISTORY }, { key = "setup", title = L.LC_SETUP } }, function(key)
+    local bar = UI.SubTabs(content, { { key = "history", title = L.LC_HISTORY }, { key = "setup", title = L.SETTINGS_TAB } }, function(key)
         for k, t in pairs(tabs) do t:SetShown(k == key) end
         tabs[key].Refresh()
     end)
@@ -308,6 +479,7 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     setup.SearchHits = function(q) return form:Filter(q) end
     setup.SearchApply = function(q) form:Filter(q) end
     form.reveal = ns.CouncilPage.ShowSetup
+    page.ShowSettings = ns.CouncilPage.ShowSetup
     page.OnShow = function()
         -- only the council (rank, names, loot master) may send the setup to the guild
         toolbar.buttons[4]:SetShown(Council.IsCouncilMember(ns.Names.Me()))

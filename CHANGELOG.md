@@ -2,6 +2,26 @@
 
 All notable changes to Liebe Grüße – Guild Tools. Newest first.
 
+## [1.0.81] – 2026-11-26
+
+- feat(blessings): live status in combat – a thin strip under each bar row, one segment per player, green while your blessing is on him and red when it is missing; drawn by the game itself, so it stays right in combat (Protection, death, a replaced blessing). Option "Live status in combat" on the Blessings page, /lg test blesslive
+- fix(blessings): right-click on a bar row in combat steps through the class (players missing the blessing first) and skips dead players – before, every right-click in combat went to the same player
+- fix(blessings): left-click in combat skips a dead target
+- fix(blessings): your own Blessing of Protection, Freedom or Sacrifice in combat removes your blessing from that player on the bar, your own recasts count again right away
+- change(blessings): in combat the counts show "~" – the game hides buffs there, the numbers are the last known state
+- change(settings): every module keeps its settings in its own page, tab "Settings" – Guild Feed (pop-ups), Professions ("!lg" answers, profession sync; gear tab), Loot Council (auto-pass, together with the council setup), Blessings (bar and sync, no more switches under the grid), Roster (enchant check, moved from General); Cooldowns keep theirs under Displays
+- change(modules): the page Modules only switches modules on and off; a gear next to a module opens its settings. "Loot council page only for council" stays there
+- change(general): only interface, characters, group role and import / export
+- feat(blessings): /lg test blesslive also says why nothing is shown (not a paladin, bar hidden, no row with players yet)
+- feat(council): loot history by raid evening – pick one evening above the list (until 6 in the morning it still counts as the evening before), and within it one council session; export and share can take just the shown evening
+- feat(council): click on a history entry: delete it, its session or its whole raid evening – for the whole guild; officers delete everything, a loot master the items he gave out; deleted entries do not come back with the sync. /lg test lchistory adds sample evenings (only for you)
+- change(council): the council may vote for themselves by default ("Allow voting for yourself", switched on once for existing setups)
+- feat(setup): the setup assistant opens once at login when something is open (per character; again only when something new is open; after the "what's new" window). It covers the profession sync hint. Option in General › Interface
+- fix(changelog): "what's new" also shows when a newer build keeps the same version number (its changelog grew) – before, it only showed when the version number went up
+- feat(setup): /lg setup – setup assistant: addon version, professions synced, main character, group role, your blessings, cooldown displays; each row with its state and a button that leads there (also General › Interface). /lg test setup
+- fix(professions): narrow window – the tabs get narrower and then show only their icons, so the settings tab is never hidden behind the search
+- fix(professions): narrow window – "Expand all" no longer covers the "Show" switches (becomes a small icon button, the "Show:" label goes first)
+
 ## [1.0.80] – 2026-11-25
 
 - change(craft): "!lg" from an addon user (1.0.80+) is answered through the addon channel instead of guild chat – every addon user of the guild sees the answer in the chat window (guild colour, links clickable); no automatic chat line, so the game's limit does not apply; players without the addon still get the guild chat answer

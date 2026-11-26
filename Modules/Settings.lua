@@ -24,6 +24,9 @@ UI.AddPage("general", L.PAGE_GENERAL, 90, function(content, page)
         function(v) settings.minimap.hide = not v; UI.UpdateMinimap() end)
     s:Toggle(L.WN_SETTING, function() return ns.WhatsNew.Settings().whatsNew end,
         function(v) ns.WhatsNew.Settings().whatsNew = v end, { tip = L.WN_SETTING_TIP })
+    s:Toggle(L.SETUP_AUTO, function() return ns.Setup.AutoEnabled() end,
+        function(v) ns.Database.Settings().setupHint = v end, { tip = L.SETUP_AUTO_TIP })
+    s:Buttons({ { L.SETUP_TITLE, function() ns.Setup.Show() end, width = 170, icon = "badge-check", tip = L.SETUP_BUTTON_TIP } })
     s:Buttons({ { L.WN_OPEN, function() ns.WhatsNew.Show(nil, true) end, width = 170, icon = "scroll-text" },
         { L.PAGE_MODULES, function() ns.Window.Show("modules") end, width = 150, icon = "badge-check", tip = L.SET_MODULES_MOVED },
         { L.TIPS_OPEN, function() ns.Window.Show("tooltips") end, width = 170, icon = "message-circle" } })
@@ -59,17 +62,6 @@ UI.AddPage("general", L.PAGE_GENERAL, 90, function(content, page)
         { L.SHARE_ALL, function() ns.Share.ShowExport(ns.Share.ORDER) end, width = 130, icon = "scroll-text" },
     })
     share:Buttons({ { L.SHARE_IMPORT, function() ns.Share.ShowImport() end, width = 180, icon = "rotate-ccw" } })
-
-    local e = form:Section(L.SET_ENCHANTS, { grid = true, wide = true })
-    e:Note(L.SET_ENCHANTS_HINT)
-    local n = 0
-    for _, slot in ipairs(Items.SLOTS) do
-        if not slot.key:match("^FINGER") and not slot.key:match("^TRINKET") then
-            n = n + 1
-            e:Toggle(L["SLOT_" .. slot.key], function() return settings.enchantSlots[slot.id] end,
-                function(v) settings.enchantSlots[slot.id] = v or nil; ns.Fire("LG_PROFILE") end, { col = (n % 2 == 1) and 1 or 2 })
-        end
-    end
 
     form:Layout()
     page.OnShow = function() form:Refresh() end

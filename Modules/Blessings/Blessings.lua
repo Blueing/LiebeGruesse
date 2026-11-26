@@ -88,7 +88,7 @@ function B.Settings()
     local s = ns.Database.Settings()
     s.blessings = s.blessings or {}
     local o = s.blessings
-    local d = { bar = true, raidOnly = false, solo = true, scale = 1, freeAssign = false, ppRead = true, ppSync = true }
+    local d = { bar = true, raidOnly = false, solo = true, scale = 1, freeAssign = false, ppRead = true, ppSync = true, live = true }
     for k, v in pairs(d) do if o[k] == nil then o[k] = v end end
     return o
 end
@@ -252,6 +252,110 @@ local function remember(unit, has)
     lastGood[unit] = m
 end
 
+---------------------------------------------------------------------------
+-- Own casts: in combat the auras are hidden, so our own casts are the only
+-- news. A player carries one blessing per paladin: whatever we cast on him
+-- replaces the blessing we gave him before – also Protection, Freedom and
+-- Sacrifice, which are not tracked themselves. Only the remembered state is
+-- corrected; the next readable scan replaces it anyway.
+---------------------------------------------------------------------------
+local SHORT_IDS = { 1022, 5599, 10278, 1044, 6940, 20729 }   -- Protection, Freedom, Sacrifice
+local shortNames
+local function isShort(name)
+    if type(name) ~= "string" then return false end
+    if not shortNames then
+        shortNames = {}
+        for _, id in ipairs(SHORT_IDS) do
+            local n = B.SpellName(id)
+            if type(n) == "string" and n ~= "" then shortNames[n] = true end
+        end
+    end
+    return shortNames[name] == true
+end
+local function isGreater(id)
+    for _, b in ipairs(B.LIST) do
+        for _, g in ipairs(b.greater) do if g == id then return true end end
+    end
+    return false
+end
+local function memo(unit)
+    local guid = ns.Call(UnitGUID, unit)
+    local m = lastGood[unit]
+    if not m or (guid and m.guid and m.guid ~= guid) then
+        m = { guid = guid }
+        lastGood[unit] = m
+    end
+    return m
+end
+local function unitClass(unit)
+    for class, units in pairs(classUnits) do
+        for _, u in ipairs(units) do if u == unit then return class end end
+    end
+end
+-- group unit (as used by the scan) for a name from the cast event
+local function unitByName(name)
+    if type(name) ~= "string" or name == "" or ns.IsSecret(name) then return nil end
+    local key = Names.Key(Names.Strip and Names.Strip(name) or name)
+    if not key then return nil end
+    for _, units in pairs(classUnits) do
+        for _, u in ipairs(units) do
+            local n = Names.Unit(u)
+            if n and (Names.Same(Names.Key(n), key) or Names.Same(Names.Key((n:match("^(%S+)"))), key)) then return u end
+        end
+    end
+end
+
+local pending   -- { unit, spell, at }: target of our next blessing cast
+-- the bar knows its target when it is clicked (also in combat)
+function B.NoteCastTarget(unit, spell)
+    if B.test or type(unit) ~= "string" or type(spell) ~= "string" then return end
+    pending = { unit = unit, spell = spell, at = GetTime() }
+end
+
+function B.OwnCast(unit, spellId)
+    if B.test or not unit or not spellId then return false end
+    local name = B.SpellName(spellId)
+    local key = spellOf[spellId]
+    if not key and not isShort(name) then return false end
+    local class = unitClass(unit)
+    if not class then return false end
+    local me = B.Me()
+    local mine = me and me.set and me.set[class]
+    local targets = { unit }
+    if key and isGreater(spellId) then targets = classUnits[class] or targets end
+    local now = GetTime()
+    for _, u in ipairs(targets) do
+        local m = memo(u)
+        if mine then m[mine] = nil end
+        if key then m[key] = now + 3600 end
+    end
+    ns.Debounce("bless-scan", 0.3, B.Scan)
+    return true
+end
+
+-- casts from macros or key binds: the target name of the cast event
+ns.On("UNIT_SPELLCAST_SENT", function(_, unit, target, _, spellId)
+    if unit ~= "player" or ns.IsSecret(spellId) or ns.IsSecret(target) or type(spellId) ~= "number" then return end
+    if not isPaladin() then return end
+    local name = B.SpellName(spellId)
+    if not (spellOf[spellId] or isShort(name)) then return end
+    if pending and GetTime() - pending.at < 1 and pending.spell == name then return end   -- the bar set it a moment ago
+    local u = unitByName(target)
+    if u then pending = { unit = u, spell = name, at = GetTime() } end
+end)
+
+ns.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellId)
+    if unit ~= "player" or ns.IsSecret(spellId) or type(spellId) ~= "number" then return end
+    if not pending or GetTime() - pending.at > 8 then return end
+    local name = B.SpellName(spellId)
+    if not name or name ~= pending.spell then return end
+    local u = pending.unit
+    pending = nil
+    ns.Safe(B.OwnCast, u, spellId)
+end)
+B.IsShortBlessing, B.UnitByName = isShort, unitByName
+B.Memory = function(unit) return lastGood[unit] end
+
 local scratch = {}
 function B.Scan()
     if B.test then return B.TestScan() end
@@ -272,7 +376,7 @@ function B.Scan()
             if ns.Call(UnitExists, unit) then
                 st.total = st.total + 1
                 local has, reliable = unitBlessings(unit, scratch)
-                if reliable then remember(unit, has) else has = rememberedBlessings(unit, scratch) end
+                if reliable then remember(unit, has) else has = rememberedBlessings(unit, scratch); st.estimated = true end
                 local miss = {}
                 for b in pairs(wanted[class] or {}) do
                     if has[b] then

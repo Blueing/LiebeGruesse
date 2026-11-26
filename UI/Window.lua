@@ -1229,6 +1229,13 @@ function Window.Show(key)
     end
 end
 
+-- a module page with its "Settings" tab open
+function Window.ShowSettings(key)
+    Window.Show(key)
+    local page = pages[key]
+    if page and page.ShowSettings then ns.Safe(page.ShowSettings) end
+end
+
 function Window.Toggle(key)
     if frame and frame:IsShown() and (not key or (current and current.key == key)) then
         frame:Hide()
