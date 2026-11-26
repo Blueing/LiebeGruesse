@@ -400,6 +400,8 @@ end
 -- after login: once per character and set of unread professions
 local function check()
     if not moduleOn() or not settings().profSyncHint then return end
+    -- the setup assistant shows open professions at login itself
+    if ns.Setup and ns.Setup.AutoEnabled() then return end
     local list = PS.Missing()
     if #list == 0 then return end
     local char = ns.Database.Char()

@@ -9,9 +9,9 @@ local DEFAULTS = {
         toasts = true,
         tooltips = { unit = true, crafters = true },
         window = {},
-        theme = { preset = "ember", colors = {}, font = "Expressway", weight = "strong", fontScale = 1.05, windowScale = 1, windowAlpha = 1 },
+        theme = { preset = "ember", colors = {}, font = "Expressway", weight = "strong", fontScale = 0.95, windowScale = 1, windowAlpha = 1 },
         modules = { feed = true, community = true, council = true, cooldowns = true, professions = true,
-            stats = true, councilOnlyMembers = false },
+            stats = true, councilOnlyMembers = true },
         craft = { answer = true, prefix = "!lg" },
         community = { failVote = true },
         lcAutoPass = true,
@@ -56,6 +56,10 @@ function Database.Init()
     ns.Theme.Migrate5()
     ns.Theme.Migrate6()
     local st = ns.db.settings
+    -- 1.0.82: default font size 95 % (the old default 105 % moves along; own choices stay)
+    if not st.theme.font95 then st.theme.font95 = true; if not st.theme.fontScale or math.abs(st.theme.fontScale - 1.05) < 0.001 then st.theme.fontScale = 0.95 end end
+    -- 1.0.82: the loot council page is for the guild master, officers and the council
+    if not st.lcPageStaffOn then st.lcPageStaffOn = true; st.modules.councilOnlyMembers = true end
     if not st.cd.clickMigrated then
         st.cd.clickMigrated = true
         if st.cd.clickWhisper == false then st.cd.clickLeft = "none" end

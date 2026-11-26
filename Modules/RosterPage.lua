@@ -318,7 +318,21 @@ function Roster.FilterMenu()
     UI.ContextMenu(entries)
 end
 
-UI.AddPage("roster", L.PAGE_ROSTER, 10, function(content, page)
+UI.AddPage("roster", L.PAGE_ROSTER, 10, function(root, page)
+    -- tabs: the roster and its settings (enchant check)
+    local content, tabs = UI.PageWithSettings(root, page, L.PAGE_ROSTER, function(form)
+        local e = form:Section(L.SET_ENCHANTS, { grid = true, wide = true })
+        e:Note(L.SET_ENCHANTS_HINT)
+        local n = 0
+        for _, slot in ipairs(ns.Items.SLOTS) do
+            if not slot.key:match("^FINGER") and not slot.key:match("^TRINKET") then
+                n = n + 1
+                e:Toggle(L["SLOT_" .. slot.key], function() return ns.Database.Settings().enchantSlots[slot.id] end,
+                    function(v) ns.Database.Settings().enchantSlots[slot.id] = v or nil; ns.Fire("LG_PROFILE") end,
+                    { col = (n % 2 == 1) and 1 or 2 })
+            end
+        end
+    end)
     -- the name search sits in the page header (page.Search below)
     local online = UI.Check(content, L.ONLY_ONLINE, function() return state.online end, function(v) state.online = v; refresh() end)
     online:SetPoint("TOPLEFT", 0, -4)
@@ -418,7 +432,7 @@ UI.AddPage("roster", L.PAGE_ROSTER, 10, function(content, page)
     local narrow
     local function placeTop()
         local w = content:GetWidth() or 1000
-        local n = w < 1060 + ns.Window.SearchReserve()
+        local n = w < 1060
         if n == narrow then return end
         narrow = n
         viewSwitch:ClearAllPoints()
@@ -430,7 +444,7 @@ UI.AddPage("roster", L.PAGE_ROSTER, 10, function(content, page)
             summary:SetPoint("TOPRIGHT", -230, -32)
         else
             viewSwitch:SetWidth(300)
-            viewSwitch:SetPoint("TOPRIGHT", -ns.Window.SearchReserve(), 0)
+            viewSwitch:SetPoint("TOPRIGHT", 0, 0)
             summary:SetPoint("TOPRIGHT", 0, -32)
         end
         if viewSwitch.Layout then viewSwitch:Layout() end
@@ -589,6 +603,7 @@ UI.AddPage("roster", L.PAGE_ROSTER, 10, function(content, page)
         end
         refresh()
     end
+    tabs.Finish()
 end, { section = "guild", icon = "users" })
 
 ns.On("LG_ROSTER", function() ns.Window.Refresh("roster") end)

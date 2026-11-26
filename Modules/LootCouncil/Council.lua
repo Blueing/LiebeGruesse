@@ -23,9 +23,15 @@ function Council.Config()
     if not gdb.lc then
         gdb.lc = {
             minRank = 1, names = {}, lootMaster = "", quality = 4, timeout = 120,
-            announce = true, multiVote = false, selfVote = false, t = 0,
+            announce = true, multiVote = false, selfVote = true, t = 0,
             responses = CopyTable and CopyTable(DEFAULT_RESPONSES) or ns.Serialize.Unpack(ns.Serialize.Pack(DEFAULT_RESPONSES)),
         }
+    end
+    -- 1.0.81 (Ben): the council may vote for themselves by default – switched on once
+    -- for existing setups; a setup shared later (also "off") is kept as it is
+    if not gdb.lcSelfVoteOn then
+        gdb.lcSelfVoteOn = true
+        gdb.lc.selfVote = true
     end
     return Council.Upgrade(gdb.lc)
 end
@@ -371,8 +377,9 @@ function Council.RequestRoll(i, to)
     if not s.test then
         local link = Items.Link(s.items[i].s) or "?"
         local chatType = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
-        if chatType and not to then ns.SendChat(L.LC_ROLL_ANNOUNCE:format(link), chatType) end
-        if to then ns.SendChat(L.LC_ROLL_ANNOUNCE:format(link), "WHISPER", (ns.Guild.Find(to) or {}).name or to) end
+        local rollText = ns.Messages.Format("lcRoll", { item = link })
+        if chatType and not to then ns.SendChat(rollText, chatType) end
+        if to then ns.SendChat(rollText, "WHISPER", (ns.Guild.Find(to) or {}).name or to) end
     end
 end
 
@@ -499,8 +506,24 @@ function Council.LastBoss()
     return (lastBoss and ns.Now() - lastBossTime < 900) and lastBoss or nil
 end
 
+-- Deleted history entries: [record id] = { t = when, by = who deleted it }.
+-- Valid when an officer deleted it, or the loot master who gave the item out.
+local REMOVED_KEEP = 180 * 86400
+local function removedStore()
+    local g = ns.Database.Guild()
+    g.lootRemoved = g.lootRemoved or {}
+    return g.lootRemoved
+end
+local function deleteValid(by, record)
+    if type(by) ~= "string" then return false end
+    if ns.Guild.IsOfficer(by) then return true end
+    return record ~= nil and type(record.by) == "string" and Names.Same(record.by, by)
+end
+
 local function historyAdd(record)
     if type(record) ~= "table" or not record.id or not record.i then return false end
+    local tomb = removedStore()[record.id]
+    if type(tomb) == "table" and deleteValid(tomb.by, record) then return false end
     local list = ns.Database.Guild().lootHistory
     for _, r in ipairs(list) do if r.id == record.id then return false end end
     list[#list + 1] = record
@@ -510,6 +533,82 @@ local function historyAdd(record)
     return true
 end
 Council.HistoryAdd = historyAdd
+
+-- test records of /lg test lchistory: only in memory, never stored or sent
+Council.testHistory = {}
+
+-- may I delete this record (for the whole guild)?
+function Council.CanDeleteRecord(r)
+    if not r then return false end
+    if r.testOnly then return true end
+    if not IsInGuild() then return false end
+    return ns.Guild.IsOfficer(Names.Me()) or (type(r.by) == "string" and Names.Same(r.by, Names.Me()))
+end
+
+-- deletes records here: ids, by = who deleted them; returns how many went
+local function applyRemove(ids, by, t)
+    local store, list = removedStore(), ns.Database.Guild().lootHistory
+    local drop, n = {}, 0
+    for _, id in ipairs(ids) do
+        if type(id) == "string" and #id <= 120 then
+            if not store[id] then store[id] = { t = t or ns.Now(), by = by } end
+            drop[id] = true
+        end
+    end
+    for i = #list, 1, -1 do
+        local r = list[i]
+        if drop[r.id] and deleteValid(by, r) then table.remove(list, i); n = n + 1 end
+    end
+    ns.Debounce("lc-history-redraw", 0.2, function() ns.Window.Refresh("council") end)
+    return n
+end
+
+-- officers (everything) and loot masters (their own awards): delete for the whole guild
+function Council.RemoveHistory(records)
+    local ids, shared, n = {}, {}, 0
+    for _, r in ipairs(records or {}) do
+        if r.testOnly then
+            for i = #Council.testHistory, 1, -1 do
+                if Council.testHistory[i] == r then table.remove(Council.testHistory, i); n = n + 1 end
+            end
+        elseif Council.CanDeleteRecord(r) then
+            ids[#ids + 1] = r.id
+            shared[#shared + 1] = r.id
+        end
+    end
+    if #ids > 0 then n = n + applyRemove(ids, Names.Me()) end
+    for i = 1, #shared, 30 do
+        local part = {}
+        for j = i, math.min(i + 29, #shared) do part[#part + 1] = shared[j] end
+        Comm.Send("HD", { r = part }, "GUILD", { priority = "normal" })
+    end
+    ns.Debounce("lc-history-redraw", 0.2, function() ns.Window.Refresh("council") end)
+    return n
+end
+
+-- deletions from the guild: each record checks who deleted it
+Comm.Register("HD", function(data, sender, channel)
+    if channel ~= "GUILD" or type(data.r) ~= "table" or not ns.Guild.IsMember(sender) then return end
+    local ids = {}
+    for i, id in ipairs(data.r) do
+        if i > 60 then break end
+        if type(id) == "string" then ids[#ids + 1] = id end
+    end
+    applyRemove(ids, sender)
+end)
+
+-- deletions passed on with the history at login (only from the member answering our request)
+Comm.Register("HR", function(data, sender, channel)
+    if channel ~= "WHISPER" or type(data.r) ~= "table" or not ns.Guild.IsMember(sender) then return end
+    if not Comm.Expected("lc-history-sync", sender) then return end
+    for i, x in ipairs(data.r) do
+        if i > 200 then break end
+        if type(x) == "table" and type(x.k) == "string" and type(x.by) == "string" then
+            local t = tonumber(x.t)
+            applyRemove({ x.k }, x.by, t and math.min(t, ns.Now()) or nil)
+        end
+    end
+end)
 
 Comm.Register("LA", function(data, sender)
     local s = current(data.id)
@@ -534,7 +633,7 @@ Comm.Register("LA", function(data, sender)
                 d = { i = item.s, r = info.t, m = record.b, ins = type(zone) == "string" and zone ~= "" and zone or nil, v = votes } }, { broadcast = true })
         end
         if Council.Config().announce then
-            local text = L.LC_ANNOUNCE:format(Items.Link(item.s) or "?", Names.Display(data.name or data.c), info.t)
+            local text = ns.Messages.Format("lcAward", { item = Items.Link(item.s) or "?", player = Names.Display(data.name or data.c), response = info.t })
             ns.AfterCombat("lc-announce-" .. record.id, function()
                 local chatType = Council.AnnounceChannel()
                 if chatType then ns.SendChat(text, chatType) end
@@ -871,6 +970,42 @@ local FAKE = {
     { "Dorn Shadowpath", "ROGUE" }, { "Elara Stormcall", "SHAMAN" }, { "Finn Greengrove", "DRUID" },
 }
 
+-- /lg test lchistory: sample awards of two raid evenings (three sessions), only in
+-- memory – never stored or sent; try the evening filter and deleting on them
+function Council.TestHistory(off)
+    wipe(Council.testHistory)
+    if not off then
+        local names = { Names.Me() }
+        for key in pairs(ns.Database.Guild().members or {}) do
+            if #names < 5 and not Names.Same(key, Names.Me()) then names[#names + 1] = key end
+        end
+        local items = { 16800, 16802, 17069, 18814, 19019, 16916, 19138, 18821 }
+        local now = ns.Now()
+        local function evening(daysAgo, hour)
+            local base = now - daysAgo * 86400
+            return base - (tonumber(date("%H", base)) or 0) * 3600 + hour * 3600
+        end
+        local plan = {
+            { t = evening(2, 20), zone = "Molten Core", n = 4 },
+            { t = evening(2, 22), zone = "Onyxia's Lair", n = 2 },
+            { t = evening(1, 20), zone = "Blackwing Lair", n = 3 },
+        }
+        local k = 0
+        for si, p in ipairs(plan) do
+            local sid = Names.Me() .. ":test" .. si
+            for i = 1, p.n do
+                k = k + 1
+                Council.testHistory[#Council.testHistory + 1] = {
+                    id = sid .. ":" .. i, t = p.t + i * 300, i = "item:" .. items[(k - 1) % #items + 1], to = names[(k - 1) % #names + 1],
+                    r = (k % 3 == 0) and "Offspec" or "Need", by = Names.Me(), v = (k % 3) + 1, z = p.zone, testOnly = true,
+                }
+            end
+        end
+        ns.Print(L.TEST_TAG .. " " .. L.LC_TEST_HISTORY:format(#Council.testHistory))
+    end
+    ns.Window.Refresh("council")
+end
+
 function Council.Test()
     if Council.session and not Council.session.ended then Council.session.ended = true end
     local items = {}
@@ -978,7 +1113,13 @@ end)
 ---------------------------------------------------------------------------
 -- Loot history: export and guild sync
 ---------------------------------------------------------------------------
+-- days: the last n days (0 = all) – or a list of records (one raid evening)
 local function historyRange(days)
+    if type(days) == "table" then
+        local out = {}
+        for _, r in ipairs(days) do if not r.test and not r.testOnly then out[#out + 1] = r end end
+        return out
+    end
     local since = days and days > 0 and (ns.Now() - days * 86400) or 0
     local out = {}
     for _, r in ipairs(ns.Database.Guild().lootHistory) do
@@ -1152,6 +1293,12 @@ Comm.Register("HQ", function(data, sender, channel, raw)
     if #newer == 0 then return end
     Comm.ReplyOnce("lchist:" .. sender, 4, 14, function()
         Comm.Send("HA", { to = sender }, "GUILD", { priority = "alert" })
+        -- deletions first, so the records that follow are already filtered
+        local rm = {}
+        for k, x in pairs(removedStore()) do
+            if type(x) == "table" and x.by and (x.t or 0) > since - 30 * 86400 and #rm < 200 then rm[#rm + 1] = { k = k, by = x.by, t = x.t } end
+        end
+        if #rm > 0 then Comm.Send("HR", { r = rm }, "WHISPER", { target = raw, priority = "bulk" }) end
         local batch = {}
         for i, r in ipairs(newer) do
             if i > 400 then break end
@@ -1168,6 +1315,10 @@ Comm.Register("HA", function(data, sender)
 end)
 
 ns.On("LG_READY", function()
+    local store, now = removedStore(), ns.Now()
+    for k, x in pairs(store) do
+        if type(x) ~= "table" or (x.t or 0) < now - REMOVED_KEEP then store[k] = nil end
+    end
     ns.After(55, function()
         if not IsInGuild() then return end
         local list = ns.Database.Guild().lootHistory

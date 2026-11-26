@@ -449,6 +449,37 @@ function Page.Build(parent)
         f.Refresh()
     end)
     expandAll:SetPoint("RIGHT", viewBar, "RIGHT", 0, 0)
+    -- narrow: first the "Show:" label goes, then "Expand all" becomes a small icon button
+    local function fitViewBar()
+        local w = viewBar:GetWidth() or 0
+        if w <= 0 then return end
+        local used = (onlineCheck:GetWidth() or 0) + 2
+        for _, c in ipairs(checks) do used = used + 14 + (c:GetWidth() or 0) end
+        local labelW = 22 + (showLabel:GetStringWidth() or 40)
+        local full = used + labelW + 12 + 130
+        local small = used + 12 + 30
+        showLabel:SetShown(w >= full or w >= used + labelW + 12 + 30)
+        checks[1]:ClearAllPoints()
+        if showLabel:IsShown() then checks[1]:SetPoint("LEFT", showLabel, "RIGHT", 14, 0)
+        else checks[1]:SetPoint("LEFT", onlineCheck, "RIGHT", 22, 0) end
+        expandAll.compact = w < full and true or nil
+        expandAll:SetWidth(expandAll.compact and 30 or 130)
+        local label = state.expandAll and L.CRAFT_COLLAPSE_ALL or L.CRAFT_EXPAND_ALL
+        if expandAll.compact then
+            expandAll:SetText("")
+            if not expandAll.icon then expandAll.icon = UI.Icon(expandAll, "chevron-down", 14, "textDim"); expandAll.icon:SetPoint("CENTER") end
+            expandAll.icon:Show()
+            expandAll.tipTitle, expandAll.tip = label, { L.CRAFT_EXPAND_TIP }
+        else
+            if expandAll.icon then expandAll.icon:Hide() end
+            expandAll:SetText(label)
+            expandAll.tipTitle, expandAll.tip = nil, nil
+        end
+        -- still too tight: the button gives way (rows open one by one with a click)
+        expandAll:SetShown(w >= small)
+    end
+    viewBar:HookScript("OnSizeChanged", fitViewBar)
+    f.FitViewBar = fitViewBar
 
     local body = CreateFrame("Frame", nil, right)
     body:SetPoint("TOPLEFT", viewBar, "BOTTOMLEFT", 0, -8)
@@ -658,6 +689,7 @@ function Page.Build(parent)
     function f.Refresh()
         for _, c in ipairs(checks) do c:Refresh() end
         expandAll:SetText(state.expandAll and L.CRAFT_COLLAPSE_ALL or L.CRAFT_EXPAND_ALL)
+        fitViewBar()
         local idx = Crafts.Index()
         if not state.prof or (state.prof ~= FAV and not idx.profs[state.prof]) then
             local best, order

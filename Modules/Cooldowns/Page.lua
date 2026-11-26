@@ -936,6 +936,7 @@ UI.AddPage("cooldowns", L.PAGE_COOLDOWNS, 50, function(content, page)
     bar:SetPoint("TOPRIGHT", 0, -36)
     bar:Select("board")
     ns.CooldownsPage.selectTab = function(key) bar:Select(key) end
+    page.ShowSettings = function() bar:Select("displays") end
     tabs.displays.form.reveal = function() bar:Select("displays") end
     -- header search: spells in the pool (board), display settings, spell list
     page.searchHint = L.CD_SEARCH_PAGE

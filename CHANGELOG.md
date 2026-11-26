@@ -16,6 +16,47 @@ All notable changes to Liebe Grüße – Guild Tools. Newest first.
 - feat(dungeons): !lfg is answered the same way as !lg since 1.0.80 – addon users get the answer through the addon channel (chat window, guild colour, "[Post]" link, /lg post), players without the addon a guild chat line; a client that sent automatic lines lately or was blocked leaves the answer to others, and a second round follows after 5 s without an answer
 - feat(test): /lg test lfg with made-up members, /lg test lfgask [dungeon] shows the !lfg answer, /lg test lfgchat [text] shows what is read from a chat message, /lg test lfgdebug
 
+## [1.0.83] – 2026-11-26
+
+- change(qol): change your group role by hand and auto role pauses for the session – one line in chat, role checks are left to you; back after a talent swap (one line in chat), login, /reload or picking it again in General › Group role
+- fix(feed): profession milestones always show the English profession name, also from German clients
+- fix(comm): no more "No player named … is currently playing" lines – addon data for a player who just went offline is dropped instead of being sent piece by piece; he is skipped for 10 minutes or until he is back online. /lg test offline
+- fix(partner): asking /who for the partner guild no longer opens the who window or the LFG who list – also when the answer comes late or the game opens it another way (a window that was already open stays). /lg test who shows what happened
+
+## [1.0.82] – 2026-11-26
+
+- feat(window): third slider in the header – font size of every addon text, next to opacity and scale; all three slimmer, they give way one by one in narrow windows
+- style(window): new sidebar – group titles in the theme's accent colour, thin lines between the groups, taller rows, the open page with an accent bar and a soft accent fade
+- feat(theme): new colourways with a short line in the theme menu – Ember, Liebe Grüße, Emerald, Radiance, Love Letter (new), Arcane, Moonwell, Crimson; existing choices keep their key
+- change(council): the loot council page shows only for the guild master, officers and the council by default (switch in Modules › Loot council); raiders keep the answer popup, their auto-pass switch is on Modules then
+- feat(notify): editable message texts with placeholders – congratulations (level, loot, profession), welcome ({player}, {first}, {level}, {item} …) – a click on a placeholder below a field puts it in at the cursor; award announcement and roll request in Loot Council › Settings, the whisper to paladins in Blessings › Settings. /lg test messages
+- feat(quick): quick actions bar for "!lg" – one-line prompts like "Salty Brown asked for [Lionheart Helm] – click to post"; a click writes the answer in your name, right-click dismisses, lines go away after 15 s (10–120 s). Movable with "Move elements". Settings in Professions › Settings, /lg test quick
+- feat(quick): "!lg" answers between addon users show in the bar with who asked; gone as soon as someone posts the answer. The [Post] link in the chat line stays (switchable)
+- change(quick): "!lg" answers for players without the addon ask first by default – they wait in the bar until you click (the game limits automatic lines); "Send" restores the old behaviour. Notifications, the login greeting and congratulations are unchanged
+- change(theme): default font size 95 % (was 105 %; a size you chose yourself stays)
+- docs(release): CurseForge and GitHub show this version's changes instead of the commit list
+- change(search): settings that are hidden for you are no longer offered by the global search
+
+## [1.0.81] – 2026-11-26
+
+- feat(blessings): live status in combat – a thin strip under each bar row, one segment per player, green while your blessing is on him and red when it is missing; drawn by the game itself, so it stays right in combat (Protection, death, a replaced blessing). Option "Live status in combat" on the Blessings page, /lg test blesslive
+- fix(blessings): right-click on a bar row in combat steps through the class (players missing the blessing first) and skips dead players – before, every right-click in combat went to the same player
+- fix(blessings): left-click in combat skips a dead target
+- fix(blessings): your own Blessing of Protection, Freedom or Sacrifice in combat removes your blessing from that player on the bar, your own recasts count again right away
+- change(blessings): in combat the counts show "~" – the game hides buffs there, the numbers are the last known state
+- change(settings): every module keeps its settings in its own page, tab "Settings" – Guild Feed (pop-ups), Professions ("!lg" answers, profession sync; gear tab), Loot Council (auto-pass, together with the council setup), Blessings (bar and sync, no more switches under the grid), Roster (enchant check, moved from General); Cooldowns keep theirs under Displays
+- change(modules): the page Modules only switches modules on and off; a gear next to a module opens its settings. "Loot council page only for council" stays there
+- change(general): only interface, characters, group role and import / export
+- feat(blessings): /lg test blesslive also says why nothing is shown (not a paladin, bar hidden, no row with players yet)
+- feat(council): loot history by raid evening – pick one evening above the list (until 6 in the morning it still counts as the evening before), and within it one council session; export and share can take just the shown evening
+- feat(council): click on a history entry: delete it, its session or its whole raid evening – for the whole guild; officers delete everything, a loot master the items he gave out; deleted entries do not come back with the sync. /lg test lchistory adds sample evenings (only for you)
+- change(council): the council may vote for themselves by default ("Allow voting for yourself", switched on once for existing setups)
+- feat(setup): the setup assistant opens once at login when something is open (per character; again only when something new is open; after the "what's new" window). It covers the profession sync hint. Option in General › Interface
+- fix(changelog): "what's new" also shows when a newer build keeps the same version number (its changelog grew) – before, it only showed when the version number went up
+- feat(setup): /lg setup – setup assistant: addon version, professions synced, main character, group role, your blessings, cooldown displays; each row with its state and a button that leads there (also General › Interface). /lg test setup
+- fix(professions): narrow window – the tabs get narrower and then show only their icons, so the settings tab is never hidden behind the search
+- fix(professions): narrow window – "Expand all" no longer covers the "Show" switches (becomes a small icon button, the "Show:" label goes first)
+
 ## [1.0.80] – 2026-11-25
 
 - change(craft): "!lg" from an addon user (1.0.80+) is answered through the addon channel instead of guild chat – every addon user of the guild sees the answer in the chat window (guild colour, links clickable); no automatic chat line, so the game's limit does not apply; players without the addon still get the guild chat answer

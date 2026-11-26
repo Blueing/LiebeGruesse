@@ -32,4 +32,36 @@ jobs:
         with:
           fetch-depth: 0
 
+      # CurseForge shows the changelog of the upload: only this version's
+      # section of CHANGELOG.md, with readable area names (not the commit list)
+      - name: Release notes
+        run: |
+          python3 - <<'PY'
+          import os, re
+          tag = os.environ.get("GITHUB_REF_NAME", "")
+          toc = open("LiebeGruesse.toc", encoding="utf-8").read()
+          version = re.search(r"^## Version:\s*(\S+)", toc, re.M).group(1)
+          if re.fullmatch(r"v?\d+(\.\d+)+", tag): version = tag.lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(r"^## \[" + re.escape(version) + r"\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.M | re.S)
+          date = re.search(r"^## \[" + re.escape(version) + r"\]\s*[–-]\s*(\S+)", text, re.M)
+          areas = {"ui": "Interface", "lc": "Loot Council", "council": "Loot Council", "cd": "Cooldowns", "bless": "Blessings",
+                   "crafts": "Professions", "prof": "Professions", "notify": "Notifications", "toast": "Notifications",
+                   "quick": "Quick actions", "feed": "Guild feed", "partner": "Partner guild", "life": "Statistics",
+                   "stats": "Statistics", "trade": "Trade timer", "greet": "Login greeting", "profsync": "Profession sync"}
+          kinds = {"feat": "New", "fix": "Fix", "change": "Change", "perf": "Faster", "style": "Look", "docs": "Docs"}
+          out = ["## Liebe Grüße – Guild Tools " + version + ((" (" + date.group(1) + ")") if date else ""), ""]
+          for line in (m.group(1) if m else "").splitlines():
+              lm = re.match(r"^- (\w+)(?:\(([^)]+)\))?:\s*(.*)$", line.strip())
+              if not lm: continue
+              kind, area, body = lm.groups()
+              area = areas.get((area or "").lower(), (area or "").capitalize())
+              label = " · ".join(x for x in (kinds.get(kind, kind.capitalize()), area) if x)
+              out.append("- **" + label + ":** " + body[:1].upper() + body[1:])
+          if len(out) == 2: out.append("- See CHANGELOG.md")
+          out += ["", "All changes: CHANGELOG.md in the addon folder."]
+          open("RELEASE_NOTES.md", "w", encoding="utf-8").write("\n".join(out) + "\n")
+          print("\n".join(out))
+          PY
+
       - uses: BigWigsMods/packager@v2

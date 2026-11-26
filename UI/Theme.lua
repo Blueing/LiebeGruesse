@@ -49,14 +49,16 @@ local function build(baseKey, accentHex)
     return c
 end
 
+-- colourways: name + one short line (shown in the theme menu)
 Theme.PRESETS = {
-    { key = "ember", name = "Ember", colors = build("charcoal", "#ff9032") },
-    { key = "lg", name = "Liebe Grüße", colors = build("navy", "#e8c27a") },
-    { key = "frost", name = "Frost", colors = build("charcoal", "#4da3ff") },
-    { key = "fel", name = "Fel green", colors = build("charcoal", "#7ee04f") },
-    { key = "void", name = "Void", colors = build("charcoal", "#b48cff") },
-    { key = "blood", name = "Blood", colors = build("charcoal", "#ff5a52") },
-    { key = "gold", name = "Gold", colors = build("charcoal", "#f2c94c") },
+    { key = "ember", name = "Ember", desc = "Glowing coals", colors = build("charcoal", "#ff8f32") },
+    { key = "lg", name = "Liebe Grüße", desc = "The guild's own gold", colors = build("navy", "#e8c27a") },
+    { key = "fel", name = "Emerald", desc = "Dreaming green", colors = build("charcoal", "#95fe32") },
+    { key = "gold", name = "Radiance", desc = "Warm holy light", colors = build("charcoal", "#ffcc48") },
+    { key = "rose", name = "Love Letter", desc = "Rose-pink greetings", colors = build("charcoal", "#ff6fab") },
+    { key = "void", name = "Arcane", desc = "Violet spellfire", colors = build("charcoal", "#8474ff") },
+    { key = "frost", name = "Moonwell", desc = "Cool moonlight", colors = build("charcoal", "#8dabff") },
+    { key = "blood", name = "Crimson", desc = "Deep battle red", colors = build("charcoal", "#fb2132") },
 }
 local presetByKey = {}
 for _, p in ipairs(Theme.PRESETS) do presetByKey[p.key] = p end
@@ -311,6 +313,13 @@ function Theme.FontSize(size)
     return math.max(6, math.floor((size or 12) * (s and s.fontScale or 1) + 0.5))
 end
 
+-- "Name  short line" with the name in the theme's accent (theme menu)
+function Theme.PresetLabel(p)
+    local a = p.colors.accent
+    local m = p.colors.muted
+    return ns.Hex(a[1], a[2], a[3], p.name) .. "   " .. ns.Hex(m[1], m[2], m[3], p.desc or "")
+end
+
 function Theme.Color(name)
     local c = Theme.colors[name] or Theme.colors.text
     return c[1], c[2], c[3], c[4]
@@ -335,7 +344,7 @@ function Theme.Migrate()
     if s.preset == "lg" or s.preset == nil or not presetByKey[s.preset] then s.preset = Theme.DEFAULT end
     s.colors = {}
     if s.font == "Friz Quadrata" or not s.font then s.font = "Expressway" end
-    s.fontScale = math.max(s.fontScale or 1, 1.05)
+    s.fontScale = s.fontScale or 0.95
     s.windowAlpha = s.windowAlpha or 1
     s.windowScale = s.windowScale or 1
 end

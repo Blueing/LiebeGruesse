@@ -1,0 +1,12 @@
+package-as: LiebeGruesse
+
+# release notes on CurseForge / GitHub: only the section of this version,
+# written by the workflow from CHANGELOG.md (step "Release notes")
+manual-changelog:
+  filename: RELEASE_NOTES.md
+  markup-type: markdown
+
+ignore:
+  - .github
+  - .pkgmeta
+  - .gitignore

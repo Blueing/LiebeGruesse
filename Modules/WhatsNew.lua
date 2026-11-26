@@ -33,7 +33,7 @@ end
 -- readable area names for the commit scopes ("fix(ui): …" -> "Interface: …")
 local AREAS = {
     ui = "Interface", roster = "Roster", armory = "Armory", compare = "Compare", partner = "Partner guild",
-    feed = "Guild feed", toast = "Notifications", notify = "Notifications", help = "Help", credits = "Credits",
+    feed = "Guild feed", toast = "Notifications", notify = "Notifications", quick = "Quick actions", help = "Help", credits = "Credits",
     lc = "Loot Council", council = "Loot Council", cd = "Cooldowns", cooldowns = "Cooldowns", bless = "Blessings",
     blessings = "Blessings", crafts = "Professions", prof = "Professions", professions = "Professions", profsync = "Profession sync", trade = "Trade timer", test = "Test commands",
     attune = "Attunements", stats = "Statistics", life = "Statistics", tooltip = "Tooltips", tooltips = "Tooltips",
@@ -177,14 +177,39 @@ function WN.Settings()
     return s
 end
 
--- after login: once per new version (not on the very first install)
+-- fingerprint of the current version's changelog lines: the version number stays
+-- the same until a release is committed, but its lines grow with every build
+function WN.Signature()
+    local e = ns.CHANGELOG and ns.CHANGELOG[1]
+    if not e or e.v ~= ns.version then return ns.version end
+    local h = 5381
+    for _, line in ipairs(e) do
+        for i = 1, #line do h = (h * 33 + line:byte(i)) % 4294967296 end
+    end
+    return ns.version .. "#" .. #e .. "#" .. h
+end
+
+-- after login: once per new version, and again when the changelog of the same
+-- version grew (a newer build of it); not on the very first install
 ns.On("LG_READY", function()
     local s = WN.Settings()
-    local seen = s.lastSeenVersion
+    local seen, seenSig = s.lastSeenVersion, s.lastSeenSig
     if ns.version == "dev" then return end
-    s.lastSeenVersion = ns.version
-    if not seen or ns.CompareVersions(ns.version, seen) <= 0 or not s.whatsNew then return end
-    ns.After(6, function() ns.AfterCombat("whatsnew", function() WN.Show(seen) end) end)
+    local sig = WN.Signature()
+    s.lastSeenVersion, s.lastSeenSig = ns.version, sig
+    if not seen or not s.whatsNew then return end
+    local since
+    if ns.CompareVersions(ns.version, seen) > 0 then
+        since = seen
+    elseif ns.CompareVersions(ns.version, seen) == 0 and seenSig ~= sig then
+        -- same version, new build: its own lines (the previous version as the start)
+        local prev = ns.CHANGELOG and ns.CHANGELOG[2]
+        since = prev and prev.v or nil
+    else
+        return
+    end
+    WN.pending = true
+    ns.After(6, function() ns.AfterCombat("whatsnew", function() WN.pending = nil; WN.Show(since) end) end)
 end)
 
 function WN.Test() WN.Show(ns.CHANGELOG and ns.CHANGELOG[4] and ns.CHANGELOG[4].v or nil) end

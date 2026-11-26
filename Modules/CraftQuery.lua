@@ -338,7 +338,28 @@ function Craft.TestPrice(text)
     ns.Print("[Test] [LG] %s", Craft.Reply("price " .. text))
 end
 
-local function say(text, channel, target, asked)
+-- the first link of an answer ("[Lionheart Helm]") for the quick actions line
+local function firstLink(text)
+    return tostring(text or ""):match("|c%x+|H.-|h%[.-%]|h|r") or tostring(text or ""):match("^(.-):") or "?"
+end
+Craft.FirstLink = firstLink
+
+local function say(text, channel, target, asked, asker)
+    -- ask first: the line waits in the quick actions bar, a click sends it
+    if ns.QuickBar.AskFirst() then
+        local who = asker and Names.Display(asker) or (target and Names.Display(target)) or "?"
+        local whisper = channel == "WHISPER"
+        ns.QuickBar.Add({ key = "craft-q-" .. (target or channel) .. "-" .. tostring(asked or GetTime()), group = "craft", icon = "hammer",
+            text = (whisper and L.QB_CRAFT_WHISPERED or L.QB_CRAFT_ASKED):format(who, firstLink(text)),
+            tip = { L.QB_CRAFT_NO_ADDON:format(who) },
+            send = { "[LG] " .. text, channel, target }, answer = text,
+            check = function()
+                if channel == "GUILD" and asked and lastAnswer > asked then return false, L.QB_ALREADY_ANSWERED end
+                return true
+            end,
+            onClick = function(_, done) if done and channel == "GUILD" then lastAnswer = GetTime() end end })
+        return
+    end
     text = "[LG] " .. text
     -- automatic answers never go out from combat or a chat lockdown: the game blocks them
     if channel ~= "GUILD" or not asked then
@@ -431,11 +452,22 @@ elseif hooksecurefunc and SetItemRef then
 end
 
 -- shows an answer in every chat window that shows guild chat (guild colour)
-function Craft.ShowAnswer(text, whisper)
+function Craft.ShowAnswer(text, whisper, asker)
     local info = ChatTypeInfo and ChatTypeInfo[whisper and "WHISPER" or "GUILD"]
     local r, g, b = (info and info.r) or 0.25, (info and info.g) or 1, (info and info.b) or 0.25
     local id = remember(text)
-    local line = "[LG] " .. text .. "  |cffe8c27a|H" .. POST_LINK .. id .. "|h[" .. L.CRAFT_POST .. "]|h|r"
+    local q = ns.QuickBar.Settings()
+    local toBar = q.enabled and q.craft and not whisper
+    -- the "[Post]" link in the chat line (optional when the quick actions bar offers it)
+    local link = (q.craftLink or not toBar) and ("  |cffe8c27a|H" .. POST_LINK .. id .. "|h[" .. L.CRAFT_POST .. "]|h|r") or ""
+    local line = "[LG] " .. text .. link
+    if toBar then
+        local who = asker and Names.Display(asker)
+        ns.QuickBar.Add({ key = "craft-a-" .. id, group = "craft", icon = "hammer",
+            text = who and L.QB_CRAFT_ASKED:format(who, firstLink(text)) or L.QB_CRAFT_ANSWER:format(firstLink(text)),
+            tip = { "[LG] " .. text, L.QB_CRAFT_POST_TIP }, answer = text,
+            onClick = function() return Craft.PostAnswer(id) end })
+    end
     local contains = (ChatFrameUtil and ChatFrameUtil.ContainsMessageGroup) or ChatFrame_ContainsMessageGroup
     local shown = false
     if contains then
@@ -455,18 +487,21 @@ Comm.Register("QA", function(data, sender, channel)
     if next(ns.Guild.members) and not ns.Guild.IsMember(sender) then return end
     if type(data.t) ~= "string" or data.t == "" then return end
     lastAnswer = GetTime()
-    Craft.ShowAnswer(Craft.SafeText(data.t), channel == "WHISPER")
+    -- who asked (only shown, a guild member's key)
+    local asker = type(data.a) == "string" and Names.Key(data.a:gsub("|", ""):sub(1, 60)) or nil
+    if asker and next(ns.Guild.members) and not ns.Guild.IsMember(asker) then asker = nil end
+    Craft.ShowAnswer(Craft.SafeText(data.t), channel == "WHISPER", asker)
 end)
 
 -- the winner answers: addon users through the addon channel, others in guild chat
 local function deliver(text, asked, asker)
     if Craft.HasAddonAnswers(asker) and IsInGuild() then
-        Comm.Send("QA", { t = text }, "GUILD", { priority = "alert" })
+        Comm.Send("QA", { t = text, a = asker }, "GUILD", { priority = "alert" })
         lastAnswer = GetTime()
-        Craft.ShowAnswer(text)
+        Craft.ShowAnswer(text, nil, asker)
         return
     end
-    say(text, "GUILD", nil, asked)
+    say(text, "GUILD", nil, asked, asker)
 end
 Craft.Deliver = deliver
 
@@ -530,7 +565,17 @@ Craft.Elect = elect
 
 ns.On("CHAT_MSG_GUILD", function(_, text, sender)
     if ns.IsSecret(text) or type(text) ~= "string" then return end
-    if text:find("^%[LG%] ") then lastAnswer = GetTime(); return end
+    -- someone posted an answer: the post prompts are done
+    if text:find("^%[LG%] ") then
+        lastAnswer = GetTime()
+        -- that answer is in guild chat now: its post prompt is done
+        local posted = text:sub(6)
+        for i = #ns.QuickBar.entries, 1, -1 do
+            local e = ns.QuickBar.entries[i]
+            if e.group == "craft" and e.answer == posted then ns.QuickBar.Remove(e.key) end
+        end
+        return
+    end
     if not settings().answer or not englishClient() then return end
     local query, raw = parseQuery(text)
     if not query or #query < 3 then return end
@@ -570,5 +615,5 @@ ns.On("CHAT_MSG_WHISPER", function(_, text, sender)
         Comm.Send("QA", { t = Craft.Reply(query, raw) }, "WHISPER", { target = sender, priority = "alert" })
         return
     end
-    say(Craft.Reply(query, raw), "WHISPER", sender)
+    say(Craft.Reply(query, raw), "WHISPER", sender, nil, key)
 end)
