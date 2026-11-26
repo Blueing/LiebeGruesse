@@ -248,6 +248,8 @@ local GROUPS = {
               if (rest or ""):find("reset") then ns.blockedAt = nil end
               ns.ChatReport()
           end },
+        { cmd = "test offline", desc = "Players skipped for addon whispers because they are offline (no \"No player named\" lines)",
+          run = function() ns.Comm.OfflineReport() end },
         { cmd = "test role", desc = "Why your group role is (not) set automatically (nothing is changed)",
           run = function() ns.QoL.Test() end },
         { cmd = "test font", desc = "Shows which font files load (font weight check)",
@@ -283,6 +285,8 @@ local GROUPS = {
         { cmd = "test profcd", desc = "Profession cooldowns with sample entries", run = function() ns.Test.ProfCooldowns() end },
         { cmd = "test trade", args = "[raw]", desc = "Trade expiration timers with sample items (1 min); raw: prints the tooltip lines of your bags",
           run = function(rest) if (rest or ""):lower():find("raw") then ns.TradeTimers.Debug() else ns.Test.Trade() end end },
+        { cmd = "test who", desc = "Partner /who: which windows listen and what was closed (after the who window popped up)",
+          run = function() ns.CoGuild.WhoReport() end },
         { cmd = "test partner", desc = "Partner guild page with sample members",
           run = function() ns.CoGuild.Test(); ns.Window.Show("coguild") end },
         { cmd = "test security", desc = "Runs forged feed, loot history and Bund messages through the checks (nothing stored or sent)",

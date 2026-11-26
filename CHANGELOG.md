@@ -2,6 +2,13 @@
 
 All notable changes to Liebe Grüße – Guild Tools. Newest first.
 
+## [1.0.83] – 2026-11-26
+
+- change(qol): change your group role by hand and auto role pauses for the session – one line in chat, role checks are left to you; back after a talent swap (one line in chat), login, /reload or picking it again in General › Group role
+- fix(feed): profession milestones always show the English profession name, also from German clients
+- fix(comm): no more "No player named … is currently playing" lines – addon data for a player who just went offline is dropped instead of being sent piece by piece; he is skipped for 10 minutes or until he is back online. /lg test offline
+- fix(partner): asking /who for the partner guild no longer opens the who window or the LFG who list – also when the answer comes late or the game opens it another way (a window that was already open stays). /lg test who shows what happened
+
 ## [1.0.82] – 2026-11-26
 
 - feat(window): third slider in the header – font size of every addon text, next to opacity and scale; all three slimmer, they give way one by one in narrow windows

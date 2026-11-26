@@ -298,7 +298,7 @@ Guide.LIST = {
           { "Your choice", "Settings › General: automatic, a fixed role or off." },
       },
       where = { { "page", "Settings", "Settings › General › Group role" }, { "chat", "Chat", "One line when the role is set" } },
-      tips = { "Battlegrounds and arenas are skipped – roles do not count there.", "Changed the role yourself? It stays until the next group or role check." },
+      tips = { "Battlegrounds and arenas are skipped – roles do not count there.", "Changed the role yourself? Auto role pauses (one line in chat) – back after a talent swap, login or /reload, or pick it again in Settings." },
       shared = "Nothing – only your own role in the group.",
       cmds = { "/lg config", "/lg test role" } },
 

@@ -72,9 +72,16 @@ end
 -- keeps the friends/who window from popping up with our results: every other
 -- frame listening to WHO_LIST_UPDATE is muted while we ask, then restored
 local muted = {}
+local listeners = {}   -- every frame ever seen listening to WHO_LIST_UPDATE (their windows are watched)
+local function noteListeners()
+    for _, f in pairs({ GetFramesRegisteredForEvent and GetFramesRegisteredForEvent("WHO_LIST_UPDATE") }) do
+        if type(f) == "table" and f ~= ns.eventFrame then listeners[f] = true end
+    end
+end
 local function quietFriendsFrame(on)
     if on then
         if #muted > 0 then return end
+        noteListeners()
         local frames = { GetFramesRegisteredForEvent and GetFramesRegisteredForEvent("WHO_LIST_UPDATE") }
         if #frames == 0 then frames = { FriendsFrame, WhoFrame } end
         for _, f in pairs(frames) do
@@ -88,9 +95,113 @@ local function quietFriendsFrame(on)
     end
 end
 
-local function sendWho(guild)
+-- Some clients open the friends/who window from code that does not listen to
+-- WHO_LIST_UPDATE, and a late answer (after our timeout) opens it as well.
+-- While we ask and up to LATE seconds after, a who/friends window that pops
+-- up by itself is closed again – unless it was already open before.
+local LATE = 60
+local quietUntil, wasOpen, hooked = 0, {}, {}
+Co.whoDiag = {}
+local function diag(text)
+    local d = Co.whoDiag
+    d[#d + 1] = ("%.1f %s"):format(GetTime(), text)
+    if #d > 12 then table.remove(d, 1) end
+end
+local function frameName(f)
+    local ok, n = pcall(f.GetName, f)
+    return ok and type(n) == "string" and n or "?"
+end
+-- the window a frame lives in: its last ancestor below UIParent
+local function topLevel(f)
+    local guard = 0
+    while f and f.GetParent and guard < 20 do
+        local ok, parent = pcall(f.GetParent, f)
+        if not ok or not parent or parent == UIParent then return f end
+        f, guard = parent, guard + 1
+    end
+    return f
+end
+local function whoWindows()
+    local list, seen = {}, {}
+    local function add(f)
+        if type(f) == "table" and f.IsShown and not seen[f] then seen[f] = true; list[#list + 1] = f end
+    end
+    add(_G.FriendsFrame); add(_G.WhoFrame)
+    for f in pairs(listeners) do add(f); add(topLevel(f)) end
+    return list
+end
+local function whoish(f)
+    if type(f) ~= "table" or not f.IsShown then return false end
+    if f == _G.FriendsFrame or f == _G.WhoFrame or listeners[f] then return true end
+    for l in pairs(listeners) do if topLevel(l) == f then return true end end
+    local n = frameName(f)
+    return n:find("Who", 1, true) ~= nil or n:find("Friends", 1, true) ~= nil
+end
+local function closeIfOurs(f, why)
+    if GetTime() >= quietUntil or wasOpen[f] or not f:IsShown() then return end
+    if HideUIPanel then pcall(HideUIPanel, f) end
+    if f:IsShown() then pcall(f.Hide, f) end
+    diag(("closed %s (%s)"):format(frameName(f), why or "show"))
+end
+local function hookFrame(f)
+    if f and f.HookScript and not hooked[f] then
+        hooked[f] = true
+        f:HookScript("OnShow", function(self)
+            if GetTime() < quietUntil then
+                diag("shown " .. frameName(self) .. (wasOpen[self] and " (was open)" or ""))
+                closeIfOurs(self, "OnShow")
+                ns.After(0, function() closeIfOurs(self, "OnShow+") end)
+            end
+        end)
+    end
+end
+local panelsHooked
+local function hookPanels()
+    if panelsHooked or not hooksecurefunc then return end
+    panelsHooked = true
+    local function onPanel(f, how)
+        if GetTime() >= quietUntil then return end
+        if not whoish(f) then
+            if type(f) == "table" and f.GetName then diag(("%s %s (left open)"):format(how, frameName(f))) end
+            return
+        end
+        diag(("%s %s"):format(how, frameName(f)))
+        hookFrame(f)
+        closeIfOurs(f, how)
+        ns.After(0, function() closeIfOurs(f, how .. "+") end)
+    end
+    if ShowUIPanel then hooksecurefunc("ShowUIPanel", function(f) onPanel(f, "ShowUIPanel") end) end
+    if ToggleFriendsFrame then
+        hooksecurefunc("ToggleFriendsFrame", function() onPanel(_G.FriendsFrame, "ToggleFriendsFrame") end)
+    end
+    if FriendsFrame_ShowSubFrame then
+        hooksecurefunc("FriendsFrame_ShowSubFrame", function() onPanel(_G.FriendsFrame, "ShowSubFrame") end)
+    end
+end
+function Co.QuietWho(seconds, fresh)
+    local was = GetTime() < quietUntil and not fresh
+    quietUntil = math.max(quietUntil, GetTime() + seconds)
+    noteListeners()
+    hookPanels()
+    for _, f in ipairs(whoWindows()) do
+        if f and f.HookScript then
+            -- open before we started asking → the player's own window, leave it
+            if not was then wasOpen[f] = f:IsShown() and true or false end
+            hookFrame(f)
+        end
+    end
+end
+local function closeNow(why)
+    for _, f in ipairs(whoWindows()) do if f then closeIfOurs(f, why) end end
+end
+local lastAsk, lastGuild = 0, nil
+
+local function sendWho(guild, first)
     asking = guild
+    lastAsk, lastGuild = GetTime(), guild
     quietFriendsFrame(true)
+    Co.QuietWho(LATE, first)
+    diag("who " .. guild)
     if C_FriendList and C_FriendList.SetWhoToUi then ns.Call(C_FriendList.SetWhoToUi, true)
     elseif SetWhoToUI then ns.Call(SetWhoToUI, 1) end
     local filter = ('g-"%s"'):format(guild)
@@ -105,14 +216,32 @@ local function sendWho(guild)
         return
     end
     -- no answer (throttled): give the friends window its event back
-    ns.After(8, function()
+    ns.After(15, function()
         if asking == guild then
             asking = nil
             quietFriendsFrame(false)
+            diag("no answer " .. guild)
+            quietUntil = GetTime() -- a late answer is caught in WHO_LIST_UPDATE
             Co.status = L.CO_WHO_BUSY
             ns.Fire("LG_COGUILD")
         end
     end)
+end
+
+-- /lg test who: what the game does with our /who
+function Co.WhoReport()
+    local frames = { GetFramesRegisteredForEvent and GetFramesRegisteredForEvent("WHO_LIST_UPDATE") }
+    local names = {}
+    for _, f in pairs(frames) do names[#names + 1] = frameName(f) end
+    ns.Print(("Who: listeners %s · FriendsFrame %s · WhoFrame %s · asking %s · quiet %ds"):format(
+        #names > 0 and table.concat(names, ", ") or "?", tostring(_G.FriendsFrame ~= nil), tostring(_G.WhoFrame ~= nil),
+        tostring(asking), math.max(0, math.floor(quietUntil - GetTime()))))
+    local watched = {}
+    for _, f in ipairs(whoWindows()) do
+        watched[#watched + 1] = frameName(f) .. (f:IsShown() and " (shown)" or "") .. (hooked[f] and "" or " (not hooked)")
+    end
+    ns.Print("  watched: " .. (#watched > 0 and table.concat(watched, ", ") or "none"))
+    for _, l in ipairs(Co.whoDiag) do ns.Print("  " .. l) end
 end
 
 -- Starts a query for all partner guilds (call from a click: the game wants a key or mouse press for /who)
@@ -127,7 +256,7 @@ function Co.Query(force)
     Co.seenNow = {}
     Co.status = L.CO_ASKING
     ns.Fire("LG_COGUILD")
-    sendWho(guilds[1])
+    sendWho(guilds[1], true)
     return true
 end
 
@@ -142,9 +271,18 @@ local function finish()
 end
 
 ns.On("WHO_LIST_UPDATE", function()
-    if not asking then return end
-    local guild = asking
+    local late = not asking and lastGuild and GetTime() - lastAsk < LATE
+    if not asking and not late then return end
+    local guild = asking or lastGuild
     asking = nil
+    diag((late and "late answer " or "answer ") .. guild)
+    quietUntil = math.max(quietUntil, GetTime() + 2)
+    closeNow("answer")
+    if late then
+        -- the friends window got this event too: close it if it opened
+        ns.After(0, function() closeNow("late") end)
+        Co.seenNow = Co.seenNow or {}
+    end
     local now = ns.Now()
     local n = whoCount()
     Co.truncated = n >= WHO_LIMIT
@@ -167,10 +305,14 @@ ns.On("WHO_LIST_UPDATE", function()
         end
     end
     quietFriendsFrame(false)
+    ns.After(0, function() closeNow("after answer") end)
+    lastGuild = nil
+    if late then finish(); return end
     if pending and #pending > 0 then
         local nextGuild = table.remove(pending, 1)
         ns.After(5, function() sendWho(nextGuild) end)
     else
+        quietUntil = GetTime() + 2 -- the player may open the window himself afterwards
         finish()
     end
 end)

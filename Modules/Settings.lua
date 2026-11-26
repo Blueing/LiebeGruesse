@@ -50,7 +50,7 @@ UI.AddPage("general", L.PAGE_GENERAL, 90, function(content, page)
     group:Dropdown(L.ROLE_AUTO, function()
         return { { value = "auto", text = L.ROLE_FROM_TALENTS }, { value = "TANK", text = L.ROLE_TANK },
             { value = "HEALER", text = L.ROLE_HEALER }, { value = "DAMAGER", text = L.ROLE_DAMAGE }, { value = "off", text = L.OFF } }
-    end, function() return ns.QoL.Setting() end, function(v) ns.Database.Char().role = v; ns.QoL.ApplyRole(true) end,
+    end, function() return ns.QoL.Setting() end, function(v) ns.Database.Char().role = v; ns.QoL.Resume(); ns.QoL.ApplyRole(true) end,
         { tip = L.ROLE_AUTO_TIP })
 
     local share = form:Section(L.SET_SHARE)

@@ -130,8 +130,9 @@ local function pump()
         else
             local text = item.text
             if item.build then text = item.build() end
-            if not text then
+            if not text or (item.channel == "WHISPER" and Comm.TargetGone(item.target)) then
                 table.remove(q, 1)
+                if text then stats.dropped = stats.dropped + 1 end
             else
                 local ok, result = pcall(C_ChatInfo.SendAddonMessage, item.prefix, text, item.channel, item.target)
                 -- 3 = throttled, 8 = channel throttled (Enum.SendAddonMessageResult)
@@ -142,6 +143,7 @@ local function pump()
                 table.remove(q, 1)
                 tokens = tokens - 1
                 stats.sent = stats.sent + 1
+                if item.channel == "WHISPER" then Comm.NoteWhisper(item.target) end
             end
         end
     end
@@ -192,7 +194,7 @@ function Comm.Send(kind, data, channel, opts)
         o.target = id
         opts = o
     end
-    if channel == "WHISPER" and not opts.target then return false end
+    if channel == "WHISPER" and (not opts.target or Comm.TargetGone(opts.target)) then return false end
     if not channelReady(channel) then return false end
     if opts.loopback then
         -- our own messages are not echoed back to us; deliver a copy locally
@@ -218,6 +220,105 @@ end
 function Comm.QueueSize()
     return #queue.alert + #queue.normal + #queue.bulk
 end
+
+---------------------------------------------------------------------------
+-- Offline whisper targets: an addon whisper to someone who is offline makes
+-- the game print "No player named 'X' is currently playing." once per
+-- message piece. We hide those lines, drop the rest of the queue for that
+-- player and skip him for a while (or until he is seen again).
+---------------------------------------------------------------------------
+local GONE_FOR = 600      -- seconds a player stays "offline" after the error
+local OWN_WINDOW = 30     -- an error within this time after our whisper is ours
+local whispered, gone, heard, wasOffline = {}, {}, {}, {}
+Comm.gone = gone
+
+function Comm.NoteWhisper(target)
+    local key = ns.Names.Key(target)
+    if key then whispered[key] = GetTime() end
+end
+
+function Comm.Heard(name)
+    local key = ns.Names.Key(name)
+    if not key then return end
+    heard[key] = GetTime()
+    gone[key] = nil
+end
+
+function Comm.TargetGone(target)
+    local key = ns.Names.Key(target)
+    if not key then return false end
+    local now = GetTime()
+    local m = ns.Guild and ns.Guild.Find and ns.Guild.Find(key)
+    if m then
+        -- roster went from offline to online since the error: logged back in
+        if m.online == false then wasOffline[key] = true
+        elseif m.online == true and wasOffline[key] then wasOffline[key] = nil; gone[key] = nil end
+    end
+    if gone[key] then
+        if now < gone[key] then return true end
+        gone[key] = nil
+    end
+    -- guild roster says offline (unless he just talked to us)
+    if m and m.online == false and not (heard[key] and now - heard[key] < 120) then return true end
+    return false
+end
+
+local function purge(key)
+    for _, q in pairs(queue) do
+        for i = #q, 1, -1 do
+            if q[i].channel == "WHISPER" and ns.Names.Key(q[i].target) == key then
+                table.remove(q, i)
+                stats.dropped = stats.dropped + 1
+            end
+        end
+    end
+end
+
+local notFound
+local function notFoundName(msg)
+    if type(msg) ~= "string" or ns.IsSecret(msg) then return nil end
+    if not notFound then
+        local fmt = type(ERR_CHAT_PLAYER_NOT_FOUND_S) == "string" and ERR_CHAT_PLAYER_NOT_FOUND_S
+            or "No player named '%s' is currently playing."
+        local pat = fmt:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%%%s", "(.+)")
+        notFound = "^" .. pat .. "$"
+    end
+    return msg:match(notFound)
+end
+Comm.NotFoundName = notFoundName
+
+-- /lg test offline
+function Comm.OfflineReport()
+    local list, now = {}, GetTime()
+    for key, untilT in pairs(gone) do
+        if untilT > now then list[#list + 1] = ("%s (%d min)"):format(ns.Names.Display(key), math.ceil((untilT - now) / 60)) end
+    end
+    table.sort(list)
+    ns.Print(("Offline whisper targets: %s · dropped messages: %d"):format(#list > 0 and table.concat(list, ", ") or "none", stats.dropped))
+end
+
+-- true if the line is about one of our own addon whispers (then it is hidden)
+function Comm.OwnNotFound(msg)
+    local name = notFoundName(msg)
+    local key = name and ns.Names.Key(name)
+    if not key then return false end
+    local t = whispered[key]
+    if not t or GetTime() - t > OWN_WINDOW then return false end
+    if not gone[key] then
+        gone[key] = GetTime() + GONE_FOR
+        wasOffline[key] = nil
+        purge(key)
+    end
+    return true
+end
+
+if ChatFrame_AddMessageEventFilter then
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg)
+        local ok, own = pcall(Comm.OwnNotFound, msg)
+        return ok and own or false
+    end)
+end
+ns.On("CHAT_MSG_SYSTEM", function(_, msg) Comm.OwnNotFound(msg) end)
 
 ---------------------------------------------------------------------------
 -- Receiving
@@ -259,6 +360,7 @@ ns.On("CHAT_MSG_ADDON", function(_, prefix, text, channel, sender)
     if prefix == Comm.PREFIX then
         if ns.Names.IsMe(sender) then return end
         stats.received = stats.received + 1
+        Comm.Heard(sender)
         receive(text, channel, sender)
     elseif foreign[prefix] then
         ns.Safe(foreign[prefix], text, channel, sender)

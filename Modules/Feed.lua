@@ -140,6 +140,15 @@ function Feed.NewCount()
     return n
 end
 
+-- Profession names come from the sender's client (e.g. German) → always English
+function Feed.ProfLabel(name)
+    if type(name) ~= "string" then return "?" end
+    local C = ns.Crafts
+    local key = C and C.ProfKey(name)
+    local info = key and C.ProfInfo(key)
+    return info and C.ProfName(key) or name
+end
+
 function Feed.Text(e)
     local d = e.d or {}
     if e.k == "lvl" then return L.FEED_LEVEL:format(who(e.a), d.l or 0)
@@ -147,9 +156,9 @@ function Feed.Text(e)
     elseif e.k == "leave" then return L.FEED_LEAVE:format(who(e.a))
     elseif e.k == "boss" then return L.FEED_BOSS:format(Theme.HexColor("gold", d.b or "?"), d.n or 0)
     elseif e.k == "loot" then return L.FEED_LOOT:format(who(e.a), Items.Link(d.i, d.n, d.q) or "?")
-    elseif e.k == "prof" then return L.FEED_PROF:format(who(e.a), d.p or "?", d.s or 0)
+    elseif e.k == "prof" then return L.FEED_PROF:format(who(e.a), Feed.ProfLabel(d.p), d.s or 0)
     elseif e.k == "first" then
-        local what = d.w == "lvl" and L.FIRST_LEVEL:format(d.l or MAX_LEVEL) or L.FIRST_PROF:format(d.p or "?", d.s or 0)
+        local what = d.w == "lvl" and L.FIRST_LEVEL:format(d.l or MAX_LEVEL) or L.FIRST_PROF:format(Feed.ProfLabel(d.p), d.s or 0)
         return L.FEED_FIRST:format(who(e.a), what)
     elseif e.k == "lc" then return L.FEED_LC:format(who(e.a), Items.Link(d.i, d.n, d.q) or "?", d.r or "")
     end
@@ -261,7 +270,7 @@ function Feed.ToastInfo(e)
     elseif e.k == "prof" then
         local class = classOf(e.a)
         local r, gg, b = ns.ClassColor(class)
-        lines[#lines + 1] = join(class and ns.Hex(r, gg, b, className(class)) or nil, d.p and ("%s %d"):format(d.p, d.s or 0) or nil)
+        lines[#lines + 1] = join(class and ns.Hex(r, gg, b, className(class)) or nil, d.p and ("%s %d"):format(Feed.ProfLabel(d.p), d.s or 0) or nil)
     end
     local clean = {}
     for _, l in ipairs(lines) do if l ~= "" then clean[#clean + 1] = l end end
@@ -294,7 +303,7 @@ function Feed.DetailLines(e)
     if d.dur then lines[#lines + 1] = line(L.FEED_D_DURATION, ns.Duration(d.dur)) end
     if e.k == "boss" and d.s and d.s > 0 then lines[#lines + 1] = line(L.FEED_D_GROUP, d.s) end
     if e.k == "lc" and d.v then lines[#lines + 1] = line(L.FEED_D_VOTES, d.v) end
-    if e.k == "prof" and d.p then lines[#lines + 1] = line(L.PROFESSION, ("%s %d"):format(d.p, d.s or 0)) end
+    if e.k == "prof" and d.p then lines[#lines + 1] = line(L.PROFESSION, ("%s %d"):format(Feed.ProfLabel(d.p), d.s or 0)) end
     -- the person, as the roster knows them now
     if e.a and e.k ~= "boss" then
         local g = ns.Guild.Find(e.a)
@@ -489,9 +498,10 @@ ns.On("LG_PROFILE", function(_, key)
         seenSkill[p.n] = p.s
         if old and p.s and p.s > old and p.s >= 300 and (p.s == p.m or p.s == 300) then
             local now = ns.Now()
-            Feed.Add({ id = ("prof:%s:%s:%d"):format(me, p.n, p.s), t = now, k = "prof", a = me, d = { p = p.n, s = p.s } },
+            local pn = Feed.ProfLabel(p.n) -- English, so German and English clients share one "first"
+            Feed.Add({ id = ("prof:%s:%s:%d"):format(me, pn, p.s), t = now, k = "prof", a = me, d = { p = pn, s = p.s } },
                 { broadcast = true })
-            Feed.Add({ id = ("first:prof:%s:%d"):format(p.n, p.s), t = now, k = "first", a = me, d = { w = "prof", p = p.n, s = p.s } },
+            Feed.Add({ id = ("first:prof:%s:%d"):format(pn, p.s), t = now, k = "first", a = me, d = { w = "prof", p = pn, s = p.s } },
                 { broadcast = true })
         end
     end

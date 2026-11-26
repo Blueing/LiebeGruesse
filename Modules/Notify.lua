@@ -79,7 +79,7 @@ function Notify.Feed(e, test)
         if not s.prof then return end
         title = L.NOTIFY_MILESTONE
         if s.gratz then
-            local msg = ns.Messages.Format("gratzProf", { player = display(e.a), profession = d.p or "?", skill = d.s or 0 })
+            local msg = ns.Messages.Format("gratzProf", { player = display(e.a), profession = ns.Feed.ProfLabel(d.p), skill = d.s or 0 })
             opts.actionText = L.NOTIFY_CLICK_GRATZ
             opts.action = function() congratulate(msg) end
         end
