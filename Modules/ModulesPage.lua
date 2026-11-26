@@ -67,6 +67,9 @@ UI.AddPage("modules", L.PAGE_MODULES, 89, function(content, page)
         apply()
         updateGears()
     end, { tip = L.SET_COUNCIL_ONLY_TIP })
+    -- the page is hidden for you: your popup option lives here
+    council:Toggle(L.LC_AUTOPASS, function() return st.lcAutoPass end, function(v) st.lcAutoPass = v end,
+        { col = 2, tip = L.LC_AUTOPASS_TIP, show = function() return not ns.Council.PageAllowed() end })
 
     page.OnShow = function()
         updateGears()

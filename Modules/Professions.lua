@@ -499,6 +499,8 @@ UI.AddPage("professions", L.PAGE_PROFESSIONS, 60, function(content, page)
         craft:Edit(L.SET_CRAFT_PREFIX, function() return st().craft.prefix end, function(v)
             if v ~= "" then st().craft.prefix = v end
         end, { width = 120 })
+        -- "!lg" answers in the quick actions bar (a click posts them)
+        ns.QuickBar.SettingsCard(form)
         local sync = form:Section(L.SET_PSYNC_SECTION)
         sync:Toggle(L.SET_PSYNC_CHAT, function() return ns.ProfSync.Settings().profSyncChat end,
             function(v) ns.ProfSync.Settings().profSyncChat = v end, { tip = L.SET_PSYNC_CHAT_TIP })

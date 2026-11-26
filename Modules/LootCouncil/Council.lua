@@ -377,8 +377,9 @@ function Council.RequestRoll(i, to)
     if not s.test then
         local link = Items.Link(s.items[i].s) or "?"
         local chatType = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
-        if chatType and not to then ns.SendChat(L.LC_ROLL_ANNOUNCE:format(link), chatType) end
-        if to then ns.SendChat(L.LC_ROLL_ANNOUNCE:format(link), "WHISPER", (ns.Guild.Find(to) or {}).name or to) end
+        local rollText = ns.Messages.Format("lcRoll", { item = link })
+        if chatType and not to then ns.SendChat(rollText, chatType) end
+        if to then ns.SendChat(rollText, "WHISPER", (ns.Guild.Find(to) or {}).name or to) end
     end
 end
 
@@ -632,7 +633,7 @@ Comm.Register("LA", function(data, sender)
                 d = { i = item.s, r = info.t, m = record.b, ins = type(zone) == "string" and zone ~= "" and zone or nil, v = votes } }, { broadcast = true })
         end
         if Council.Config().announce then
-            local text = L.LC_ANNOUNCE:format(Items.Link(item.s) or "?", Names.Display(data.name or data.c), info.t)
+            local text = ns.Messages.Format("lcAward", { item = Items.Link(item.s) or "?", player = Names.Display(data.name or data.c), response = info.t })
             ns.AfterCombat("lc-announce-" .. record.id, function()
                 local chatType = Council.AnnounceChannel()
                 if chatType then ns.SendChat(text, chatType) end

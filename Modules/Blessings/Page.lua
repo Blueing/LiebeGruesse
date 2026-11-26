@@ -36,6 +36,8 @@ UI.AddPage("blessings", L.PAGE_BLESSINGS, 33, function(root, page)
         -- PallyPower: guests without this addon (read) and sending to them (sync)
         sync:Toggle(L.BLESS_PP_READ, function() return o().ppRead end, function(v) o().ppRead = v; if v then B.Request() end end, { tip = L.BLESS_PP_READ_TIP })
         sync:Toggle(L.BLESS_PP_SYNC, function() return o().ppSync end, function(v) o().ppSync = v; if v then B.Share(B.Me()) end end, { tip = L.BLESS_PP_SYNC_TIP })
+        local msgs = form:Section(L.MSG_SECTION, { wide = true })
+        ns.Messages.Rows(msgs, { "blessWhisper" })
     end)
     -- head: kicker, title, three counters
     local kicker = UI.Text(content, 10, "accent")

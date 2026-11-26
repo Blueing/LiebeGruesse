@@ -50,8 +50,9 @@ function Notify.Feed(e, test)
         opts.big = true
         if s.sound then opts.sound = SOUND_MILESTONE end
         if s.gratz then
+            local msg = ns.Messages.Format("gratzLevel", { player = display(e.a), level = d.l or 0 })
             opts.actionText = L.NOTIFY_CLICK_GRATZ
-            opts.action = function() congratulate(L.NOTIFY_GRATZ_LEVEL:format(d.l or 0, display(e.a))) end
+            opts.action = function() congratulate(msg) end
         end
     elseif e.k == "loot" then
         local info = Items.Info(d.i)
@@ -65,7 +66,7 @@ function Notify.Feed(e, test)
         if s.sound then opts.sound = SOUND_EPIC end
         if s.gratz then
             opts.actionText = L.NOTIFY_CLICK_WHISPER_GRATZ
-            opts.action = function() ns.SendChat(L.NOTIFY_GRATZ_LOOT:format(Items.Link(d.i) or "?"), "WHISPER", whisperTarget(e.a)) end
+            opts.action = function() ns.SendChat(ns.Messages.Format("gratzLoot", { player = display(e.a), item = Items.Link(d.i) or "?" }), "WHISPER", whisperTarget(e.a)) end
         end
     elseif e.k == "boss" then
         if not s.boss then return end
@@ -78,8 +79,9 @@ function Notify.Feed(e, test)
         if not s.prof then return end
         title = L.NOTIFY_MILESTONE
         if s.gratz then
+            local msg = ns.Messages.Format("gratzProf", { player = display(e.a), profession = d.p or "?", skill = d.s or 0 })
             opts.actionText = L.NOTIFY_CLICK_GRATZ
-            opts.action = function() congratulate(L.NOTIFY_GRATZ_PROF:format(display(e.a), d.p or "?", d.s or 0)) end
+            opts.action = function() congratulate(msg) end
         end
     elseif e.k == "first" then
         if not s.first then return end
@@ -90,8 +92,9 @@ function Notify.Feed(e, test)
         if not s.join then return end
         title = L.NOTIFY_JOIN
         if s.gratz then
+            local msg = ns.Messages.Format("welcome", { player = display(e.a) })
             opts.actionText = L.NOTIFY_CLICK_WELCOME
-            opts.action = function() congratulate(L.NOTIFY_WELCOME:format(display(e.a))) end
+            opts.action = function() congratulate(msg) end
         end
     elseif e.k == "leave" then
         if not s.leave then return end
@@ -267,6 +270,11 @@ UI.AddPage("notifications", L.PAGE_NOTIFY, 91, function(content, page)
     what:Toggle(L.NOTIFY_UPDATE, get("update"), set("update"), { col = 2, tip = L.NOTIFY_UPDATE_TIP })
     what:Toggle(L.NOTIFY_FAILVOTE, function() return ns.Database.Settings().community.failVote ~= false end,
         function(v) ns.Database.Settings().community.failVote = v end, { tip = L.NOTIFY_FAILVOTE_TIP })
+
+    -- what the congratulation clicks write (placeholders)
+    local msgs = form:Section(L.MSG_SECTION, { wide = true })
+    msgs:Note(L.MSG_HINT, { col = 0, height = 30 })
+    ns.Messages.Rows(msgs, { "gratzLevel", "gratzLoot", "gratzProf", "welcome" })
 
     local test = form:Section(L.NOTIFY_TEST)
     test:Buttons({

@@ -542,8 +542,9 @@ function B.WhisperAll()
     for _, p in ipairs(B.PaladinList()) do
         local text = describe(p.set)
         if text and not p.me then
-            if B.test then ns.Print(L.TEST_TAG .. " " .. p.name .. ": " .. L.BLESS_WHISPER:format(text))
-            else ns.SendChat(L.BLESS_WHISPER:format(text), "WHISPER", p.name) end
+            local msg = ns.Messages.Format("blessWhisper", { blessings = text, player = Names.Display(p.name) })
+            if B.test then ns.Print(L.TEST_TAG .. " " .. p.name .. ": " .. msg)
+            else ns.SendChat(msg, "WHISPER", p.name) end
             n = n + 1
         end
     end

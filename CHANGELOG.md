@@ -2,6 +2,20 @@
 
 All notable changes to Liebe Grüße – Guild Tools. Newest first.
 
+## [1.0.82] – 2026-11-26
+
+- feat(window): third slider in the header – font size of every addon text, next to opacity and scale; all three slimmer, they give way one by one in narrow windows
+- style(window): new sidebar – group titles in the theme's accent colour, thin lines between the groups, taller rows, the open page with an accent bar and a soft accent fade
+- feat(theme): new colourways with a short line in the theme menu – Ember, Liebe Grüße, Emerald, Radiance, Love Letter (new), Arcane, Moonwell, Crimson; existing choices keep their key
+- change(council): the loot council page shows only for the guild master, officers and the council by default (switch in Modules › Loot council); raiders keep the answer popup, their auto-pass switch is on Modules then
+- feat(notify): editable message texts with placeholders – congratulations (level, loot, profession), welcome ({player}, {first}, {level}, {item} …) – a click on a placeholder below a field puts it in at the cursor; award announcement and roll request in Loot Council › Settings, the whisper to paladins in Blessings › Settings. /lg test messages
+- feat(quick): quick actions bar for "!lg" – one-line prompts like "Salty Brown asked for [Lionheart Helm] – click to post"; a click writes the answer in your name, right-click dismisses, lines go away after 15 s (10–120 s). Movable with "Move elements". Settings in Professions › Settings, /lg test quick
+- feat(quick): "!lg" answers between addon users show in the bar with who asked; gone as soon as someone posts the answer. The [Post] link in the chat line stays (switchable)
+- change(quick): "!lg" answers for players without the addon ask first by default – they wait in the bar until you click (the game limits automatic lines); "Send" restores the old behaviour. Notifications, the login greeting and congratulations are unchanged
+- change(theme): default font size 95 % (was 105 %; a size you chose yourself stays)
+- docs(release): CurseForge and GitHub show this version's changes instead of the commit list
+- change(search): settings that are hidden for you are no longer offered by the global search
+
 ## [1.0.81] – 2026-11-26
 
 - feat(blessings): live status in combat – a thin strip under each bar row, one segment per player, green while your blessing is on him and red when it is missing; drawn by the game itself, so it stays right in combat (Protection, death, a replaced blessing). Option "Live status in combat" on the Blessings page, /lg test blesslive

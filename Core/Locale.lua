@@ -208,7 +208,7 @@ local enUS5 = {
     ROLE_FROM_TALENTS = "Automatic (talents)", ROLE_DAMAGER = "Damage", ROLE_SET = "Role set to %s.",
     LC_AUTOPASS = "Auto-pass unusable items", LC_AUTOPASS_TIP = "Only in the loot council popup: armor and weapons your class cannot wear are answered with \"pass\". Normal group loot rolls in the game are never touched.",
     SET_MODULES = "Modules", SET_MODULES_HINT = "Switch off parts you do not need. The loot council popup for raiders always works.",
-    SET_COUNCIL_ONLY = "Loot council page only for council", SET_COUNCIL_ONLY_TIP = "Raiders still get the answer popup; only the setup and history page is hidden.",
+    SET_COUNCIL_ONLY = "Loot council page only for officers and council", SET_COUNCIL_ONLY_TIP = "The page shows for the guild master, officers (rank 0/1) and the council (council rank, extra names, loot master). Raiders still get the answer popup; their auto pass switch is here then.",
     SET_CRAFT = "Who can craft it? (guild chat)", SET_CRAFT_HINT = "Write \"!lg Lionheart Helm\" (or an item link) in guild chat. Exactly one addon user answers who can craft it. \"!lg price Lionheart Helm\" adds what the materials cost.",
     SET_CRAFT_ANSWER = "Answer craft questions", SET_CRAFT_ANSWER_TIP = "Your client may be the one that answers in guild chat. Answers are English only, so only English game clients answer.",
     SET_CRAFT_PREFIX = "Command",
@@ -925,5 +925,37 @@ local enUS13 = {
     BLESS_LIVE_REPORT = "Live blessing status: %s · setting %s · %d of %d segments active (%d rows) · paused after roster change: %s",
 }
 for k, v in pairs(enUS13) do enUS[k] = v end
+
+-- 1.0.82
+local enUS14 = {
+    HEADER_FONT = "Font",
+    MSG_SECTION = "Messages", MSG_HINT = "What the addon writes for you. Placeholders in curly brackets are filled in – click one below a field to put it in. An empty field uses the default text.",
+    MSG_TIP = "Placeholders: %s – click one below the field to put it in.\nEmpty = default: %s",
+    MSG_CHIP_TIP = "Click: put it in at the cursor.", MSG_VAR_player = "Full name of the player", MSG_VAR_first = "First name of the player",
+    MSG_VAR_level = "The level reached", MSG_VAR_item = "Item link", MSG_VAR_profession = "Name of the profession",
+    MSG_VAR_skill = "Skill reached", MSG_VAR_response = "The answer the winner chose (BiS, upgrade …)",
+    MSG_VAR_blessings = "The blessings of this paladin (class: blessing …)",
+    MSG_gratzLevel = "Level congratulation", MSG_gratzLoot = "Loot congratulation (whisper)", MSG_gratzProf = "Profession congratulation",
+    MSG_welcome = "Welcome", MSG_lcAward = "Award announcement", MSG_lcRoll = "Roll request", MSG_blessWhisper = "Whisper to paladins",
+    MSG_DEF_GRATZ_LEVEL = "Congratulations on level {level}, {player}!", MSG_DEF_GRATZ_LOOT = "Congratulations on {item}!",
+    MSG_DEF_GRATZ_PROF = "Congratulations, {player} – {profession} {skill}!", MSG_DEF_WELCOME = "Welcome to the guild, {player}!",
+    MSG_DEF_LC_AWARD = "{item} goes to {player} ({response})", MSG_DEF_LC_ROLL = "Please /roll for {item}",
+    MSG_DEF_BLESS_WHISPER = "Your blessings: {blessings}",
+    QB_TITLE = "Quick actions", QB_ENABLED = "Quick actions bar for \"!lg\"",
+    QB_HINT = "Only for \"!lg\" answers: one-line prompts like \"Salty Brown asked for [Lionheart Helm] – click to post\". A click writes the line in your name; right-click dismisses. Notifications, greetings and congratulations stay as they are. Place it with \"Move elements\".",
+    QB_AUTO = "Answers for players without addon", QB_AUTO_ASK = "Ask first", QB_AUTO_SEND = "Send",
+    QB_AUTO_TIP = "\"!lg\" answers for players without the (current) addon. Ask first: the answer waits in the bar until you click (the game limits automatic lines and sometimes blocks them). Send: the addon writes it itself.",
+    QB_CRAFT = "\"!lg\" answers to post", QB_CRAFT_TIP = "An answer sent between addon users shows in the bar: one click posts it in guild chat for players without the addon. Gone as soon as someone posts it.",
+    QB_CRAFT_LINK = "[Post] link in the chat line", QB_CRAFT_LINK_TIP = "Keeps the clickable [Post] behind \"!lg\" answers in your chat window.",
+    QB_TTL = "Lines stay", QB_DISMISS = "Dismiss", QB_WILL_SEND = "Sends:", QB_CLICK_SEND = "Click: send · Right-click: dismiss",
+    QB_CLICK_OPEN = "Click: do it · Right-click: dismiss", QB_MORE = "+%d more",
+    QB_SAMPLE = "Quick actions – prompts show here", QB_SAMPLE_TIP = "Example: \"Salty Brown asked for [Lionheart Helm] – click to post the answer\".",
+    QB_CRAFT_ASKED = "%s asked for %s – click to post", QB_CRAFT_WHISPERED = "%s whispered for %s – click to answer",
+    QB_CRAFT_ANSWER = "Answer for %s – click to post", QB_CRAFT_NO_ADDON = "%s has no (current) addon – only a chat line reaches him.",
+    QB_CRAFT_POST_TIP = "Posts the answer in guild chat (for players without the addon).",
+    QB_ALREADY_ANSWERED = "Already answered in guild chat.",
+    QB_TEST_DONE = "Sample \"!lg\" lines in the quick actions bar – a click only prints the text. /lg test quick off clears them.",
+}
+for k, v in pairs(enUS14) do enUS[k] = v end
 
 for k, v in pairs(enUS) do L[k] = v end

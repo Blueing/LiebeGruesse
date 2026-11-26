@@ -433,6 +433,7 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
     ann:Segment(L.LC_ANNOUNCE_CHANNEL, { { value = "RAID", text = L.LC_CH_RAID }, { value = "RAID_WARNING", text = L.LC_CH_RW },
         { value = "NONE", text = L.LC_CH_NONE } }, function() return cfg().announce == false and "NONE" or (cfg().announceChannel or "RAID") end,
         function(v) cfg().announce = v ~= "NONE"; cfg().announceChannel = v; changed() end, { col = 0, width = 330, tip = L.LC_ANNOUNCE_CHANNEL_TIP })
+    ns.Messages.Rows(ann, { "lcAward", "lcRoll" })
 
     -- loot master options (personal)
     local ml = form:Section(L.LC_ML_SECTION)
@@ -486,9 +487,26 @@ UI.AddPage("council", L.PAGE_COUNCIL, 40, function(content, page)
         toolbar:Fit()
         tabs[bar.current].Refresh()
     end
-end, { section = "raid", icon = "gem", module = "council", visible = function()
-    if not ns.Database.Settings().modules.councilOnlyMembers then return true end
-    return Council.IsCouncilMember(Names.Me())
-end })
+end, { section = "raid", icon = "gem", module = "council", visible = function() return Council.PageAllowed() end })
+
+-- Who sees the page: guild master, officers and the council (rank, names,
+-- loot master). Raiders keep the answer popup; their one option (auto pass)
+-- is on the Modules page then. Switch: Modules › Loot council.
+function Council.PageAllowed()
+    if ns.Database.Settings().modules.councilOnlyMembers == false then return true end
+    local me = Names.Me()
+    return ns.Guild.IsOfficer(me) == true or Council.IsCouncilMember(me) == true
+end
+
+-- the roster or the council setup can change who sees it: rebuild the sidebar only then
+local lastAllowed
+local function recheck()
+    local now = Council.PageAllowed()
+    if lastAllowed ~= nil and now ~= lastAllowed and ns.Window.BuildNav then ns.Window.BuildNav() end
+    lastAllowed = now
+end
+ns.On("LG_ROSTER", recheck)
+ns.On("LG_COUNCIL", recheck)
+ns.On("LG_READY", recheck)
 
 ns.On("LG_ITEMS", function() ns.Window.Refresh("council") end)

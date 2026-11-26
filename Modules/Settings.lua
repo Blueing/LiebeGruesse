@@ -79,9 +79,9 @@ UI.AddPage("appearance", L.PAGE_APPEARANCE, 95, function(content, page)
     local w = form:Section(L.SET_LOOK)
     w:Dropdown(L.SET_THEME, function()
         local list = {}
-        for _, p in ipairs(Theme.PRESETS) do list[#list + 1] = { value = p.key, text = p.name } end
+        for _, p in ipairs(Theme.PRESETS) do list[#list + 1] = { value = p.key, text = Theme.PresetLabel(p) } end
         return list
-    end, function() return theme.preset end, function(v) Theme.SetPreset(v) end)
+    end, function() return theme.preset end, function(v) Theme.SetPreset(v) end, { width = 260 })
     w:Dropdown(L.FONT, function() return Theme.Fonts() end, function() return theme.font end,
         function(v) theme.font = v; Theme.Apply() end)
     w:Segment(L.SET_FONT_WEIGHT, { { value = "normal", text = L.SET_WEIGHT_NORMAL }, { value = "strong", text = L.SET_WEIGHT_STRONG }, { value = "bold", text = L.SET_WEIGHT_BOLD } },

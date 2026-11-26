@@ -11,6 +11,7 @@ local frame, current
 
 local SIDEBAR_W, HEADER_H, FOOTER_H = 200, 72, 50
 local SEARCH_STRIP_H = 44
+local HEADER_SLIDER_W = 96
 -- page search: top right of the page area; pages keep this corner free
 Window.SEARCH_W, Window.SEARCH_H = 220, 26
 Window.SEARCH_RESERVE = 220 + 14
@@ -415,27 +416,36 @@ local function create()
     frame.move.tipTitle = L.MOVE_ELEMENTS
     frame.move.fullText = L.MOVE_ELEMENTS
 
+    -- three slim sliders: opacity, window scale, font size of every addon text
     local theme = settings().theme
-    local scale = UI.Slider(header, nil, 0.6, 1.4, 0.05, function() return theme.windowScale or 1 end, function(v)
+    local function pct(v) return ("%d%%"):format(v * 100 + 0.5) end
+    local function headerSlider(labelText, minV, maxV, get, set)
+        local sld = UI.Slider(header, nil, minV, maxV, 0.05, get, set, pct)
+        sld:SetSize(HEADER_SLIDER_W, 16)
+        Theme.RegisterText(sld.value, 10, "text")
+        Theme.SetFont(sld.value, Theme.Font(), Theme.FontSize(10), "")
+        sld.value:SetWidth(32)
+        local lbl = UI.Text(header, 10, "textDim", "RIGHT")
+        lbl:SetText(labelText)
+        return sld, lbl
+    end
+    local fontS, fontL = headerSlider(L.HEADER_FONT, 0.8, 1.4, function() return theme.fontScale or 1 end, function(v)
+        theme.fontScale = v
+        ns.Debounce("theme-apply", 0.3, Theme.Apply)
+    end)
+    local scale, scaleLabel = headerSlider(L.SCALE, 0.6, 1.4, function() return theme.windowScale or 1 end, function(v)
         theme.windowScale = v
         ns.Debounce("window-scale", 0.25, applyLook)
-    end, function(v) return ("%d%%"):format(v * 100 + 0.5) end)
-    scale:SetWidth(140)
-    scale:SetPoint("RIGHT", frame.move, "LEFT", -18, 0)
-    local scaleLabel = UI.Text(header, 11, "textDim", "RIGHT")
-    scaleLabel:SetPoint("RIGHT", scale, "LEFT", -8, 0)
-    scaleLabel:SetText(L.SCALE)
-    local alpha = UI.Slider(header, nil, 0.3, 1, 0.05, function() return theme.windowAlpha or 1 end, function(v)
+    end)
+    local alpha, alphaLabel = headerSlider(L.OPACITY, 0.3, 1, function() return theme.windowAlpha or 1 end, function(v)
         theme.windowAlpha = v
         applyLook()
-    end, function(v) return ("%d%%"):format(v * 100 + 0.5) end)
-    alpha:SetWidth(140)
-    alpha:SetPoint("RIGHT", scaleLabel, "LEFT", -18, 0)
-    local alphaLabel = UI.Text(header, 11, "textDim", "RIGHT")
-    alphaLabel:SetPoint("RIGHT", alpha, "LEFT", -8, 0)
-    alphaLabel:SetText(L.OPACITY)
-    frame.headerSliders = { scale, alpha }
-    frame.headerParts = { alpha = { alpha, alphaLabel }, scale = { scale, scaleLabel } }
+    end)
+    -- right to left: font size, scale, opacity (Window.Responsive places them)
+    frame.headerSliders = { fontS, scale, alpha }
+    frame.headerParts = { { fontS, fontL }, { scale, scaleLabel }, { alpha, alphaLabel } }
+    -- texts change width with the font size: lay the header out again
+    Theme.OnApply(function() if frame and frame:IsShown() then Window.Responsive() end end)
 
     -------------------------------------------------------------------
     -- footer
@@ -498,25 +508,29 @@ end
 ---------------------------------------------------------------------------
 -- Navigation
 ---------------------------------------------------------------------------
+-- Layout: group title in the accent colour, a thin line between the groups,
+-- the open page with an accent bar and a soft accent fade (colours from the theme)
+local NAV_ITEM_MAX, NAV_ITEM_MIN, NAV_HEAD_H, NAV_GAP = 30, 21, 24, 13
 local function navItem(i)
     local b = frame.navItems[i]
     if b then return b end
     b = CreateFrame("Button", nil, frame.nav)
-    b:SetHeight(26)
-    b.sel = UI.Fill(b, "selected")
+    b:SetHeight(NAV_ITEM_MAX)
+    b.sel = UI.Gradient(b, "accent", 0.30, "BACKGROUND")
     b.sel:SetAllPoints()
     b.bar = UI.Fill(b, "accent", "ARTWORK")
-    b.bar:SetPoint("TOPLEFT"); b.bar:SetPoint("BOTTOMLEFT"); b.bar:SetWidth(2)
+    b.bar:SetPoint("TOPLEFT"); b.bar:SetPoint("BOTTOMLEFT"); b.bar:SetWidth(3)
     b.hl = UI.Fill(b, "hover", "HIGHLIGHT")
     b.hl:SetAllPoints()
     b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetSize(14, 14)
+    b.icon:SetSize(15, 15)
     b.icon:SetPoint("LEFT", 18, 0)
     b.text = UI.Text(b, 13, "textDim")
-    b.text:SetPoint("LEFT", b.icon, "RIGHT", 10, 0)
+    b.text:SetPoint("LEFT", b.icon, "RIGHT", 11, 0)
+    b.text:SetPoint("RIGHT", -8, 0)
     -- small badge on the right (e.g. NEW for a page not opened yet)
     b.badge = CreateFrame("Frame", nil, b, "BackdropTemplate")
-    UI.Skin(b.badge, "sidebar", "bronzeDim")
+    UI.Skin(b.badge, "sidebar", "accentDim")
     b.badge:SetHeight(14)
     b.badge:SetPoint("RIGHT", -10, 0)
     b.badge.text = UI.Text(b.badge, 9, "accent", "CENTER", nil, true)
@@ -534,7 +548,7 @@ function Window.BuildNav()
     for _, b in ipairs(frame.navItems) do b:Hide() end
     for _, h in ipairs(frame.navHeads) do h:Hide() end
     for _, l in ipairs(frame.navLines) do l:Hide() end
-    -- density: full size when it fits, tighter rows (down to 20 px) when the window is short
+    -- density: full size when it fits, tighter rows (down to 21 px) when the window is short
     local avail = frame.navScroll:GetHeight() or 0
     frame.navBuiltH = avail
     local count, groups = 0, 0
@@ -543,42 +557,46 @@ function Window.BuildNav()
         for _, page in ipairs(pageList) do if page.section == section.key and Window.PageVisible(page) then k = k + 1 end end
         if k > 0 then count = count + k; groups = groups + 1 end
     end
-    local headH = frame.compact and 6 or 20
-    local fixed = groups * (headH + 2) + math.max(0, groups - 1) * 8
-    local itemH = 26
-    if avail > 50 and count > 0 then itemH = math.max(20, math.min(26, math.floor((avail - fixed) / count))) end
-    local y, n, heads = 0, 0, 0
-    for si, section in ipairs(Window.SECTIONS) do
+    local headH = frame.compact and 0 or NAV_HEAD_H
+    local gap = NAV_GAP
+    local fixed = 6 + groups * headH + math.max(0, groups - 1) * gap
+    local itemH = NAV_ITEM_MAX
+    if avail > 50 and count > 0 then
+        local fit = math.floor((avail - fixed) / count)
+        -- short windows: the gaps shrink before the rows do
+        if fit < 25 then gap = 7; fixed = 6 + groups * headH + math.max(0, groups - 1) * gap; fit = math.floor((avail - fixed) / count) end
+        itemH = math.max(NAV_ITEM_MIN, math.min(NAV_ITEM_MAX, fit))
+    end
+    local y, n, heads = 6, 0, 0
+    for _, section in ipairs(Window.SECTIONS) do
         local any = false
         for _, page in ipairs(pageList) do if page.section == section.key and Window.PageVisible(page) then any = true end end
         if any then
             if heads > 0 then
-                -- compact sidebar: a thin line between the groups instead of titles
-                if frame.compact then
-                    local line = frame.navLines[heads]
-                    if not line then
-                        line = UI.Fill(frame.nav, "borderDim", "ARTWORK")
-                        line:SetHeight(1)
-                        frame.navLines[heads] = line
-                    end
-                    line:ClearAllPoints()
-                    line:SetPoint("TOPLEFT", 14, -y - 2)
-                    line:SetPoint("TOPRIGHT", -14, -y - 2)
-                    line:Show()
+                -- a thin line between the groups
+                local line = frame.navLines[heads]
+                if not line then
+                    line = UI.Fill(frame.nav, "borderDim", "ARTWORK")
+                    line:SetHeight(1)
+                    frame.navLines[heads] = line
                 end
-                y = y + 8
+                line:ClearAllPoints()
+                line:SetPoint("TOPLEFT", 14, -y - math.floor(gap / 2))
+                line:SetPoint("TOPRIGHT", -14, -y - math.floor(gap / 2))
+                line:Show()
+                y = y + gap
             end
             heads = heads + 1
             local head = frame.navHeads[heads]
             if not head then
-                head = UI.Text(frame.nav, 11, "bronze", nil, nil, true)
+                head = UI.Text(frame.nav, 12, "accent", nil, nil, true)
                 frame.navHeads[heads] = head
             end
             head:ClearAllPoints()
-            head:SetPoint("TOPLEFT", 16, -y - 2)
+            head:SetPoint("LEFT", frame.nav, "TOPLEFT", 16, -y - headH / 2)
             head:SetText(ns.Upper(L[section.title]))
             head:SetShown(not frame.compact)
-            y = y + (frame.compact and 6 or 20)
+            y = y + headH
             for _, page in ipairs(pageList) do
                 if page.section == section.key and Window.PageVisible(page) then
                     n = n + 1
@@ -606,9 +624,9 @@ function Window.BuildNav()
                     y = y + itemH
                 end
             end
-            y = y + 2
         end
     end
+    y = y + 6
     frame.nav:SetHeight(math.max(1, y))
     if y <= avail then frame.navScroll:SetVerticalScroll(0) end
     Window.UpdateNav()
@@ -622,7 +640,8 @@ function Window.UpdateNav()
             b.sel:SetShown(on)
             b.bar:SetShown(on)
             b.text:SetTextColor(Theme.Color(on and "text" or "textDim"))
-            b.icon:SetVertexColor(Theme.Color(on and "accent" or "muted"))
+            b.icon:SetVertexColor(Theme.Color(on and "text" or "textDim"))
+            if not on then b.icon:SetAlpha(0.85) else b.icon:SetAlpha(1) end
         end
     end
     if current then frame.title:SetText(current.title) end
@@ -681,21 +700,32 @@ function Window.Responsive()
     local titleW = (frame.title.GetUnboundedStringWidth and frame.title:GetUnboundedStringWidth()) or frame.title:GetStringWidth() or 120
     local wantSearch = 0
     local room = headerW - 22 - titleW - 18 - ctrlW - (wantSearch > 0 and (wantSearch + 22) or 0)
-    local sl, al = lw(frame.headerParts.scale[2]), lw(frame.headerParts.alpha[2])
-    local sliderW, showScale, showAlpha = 140, false, false
-    for _, sw in ipairs({ 140, 100 }) do
-        if not showScale and room >= 2 * (18 + sw + 8) + sl + al then sliderW, showScale, showAlpha = sw, true, true end
+    -- as many sliders as fit (font size first, opacity last), each 96 px, else 72 px
+    local parts = frame.headerParts
+    local shown, sliderW = 0, HEADER_SLIDER_W
+    for _, sw in ipairs({ HEADER_SLIDER_W, 72 }) do
+        local need, n = 0, 0
+        for _, p in ipairs(parts) do
+            local add = 14 + sw + 6 + lw(p[2])
+            if room >= need + add then need, n = need + add, n + 1 else break end
+        end
+        if n > shown then shown, sliderW = n, sw end
+        if n == #parts then break end
     end
-    for _, sw in ipairs({ 140, 100 }) do
-        if not showScale and room >= 18 + sw + 8 + sl then sliderW, showScale = sw, true end
+    local anchor = frame.move
+    for i, p in ipairs(parts) do
+        local on = i <= shown
+        p[1]:SetShown(on); p[2]:SetShown(on)
+        if on then
+            if math.abs((p[1]:GetWidth() or 0) - sliderW) > 0.5 then p[1]:SetWidth(sliderW); p[1]:Refresh() end
+            p[1]:ClearAllPoints()
+            p[1]:SetPoint("RIGHT", anchor, "LEFT", -14, 0)
+            p[2]:ClearAllPoints()
+            p[2]:SetPoint("RIGHT", p[1], "LEFT", -6, 0)
+            anchor = p[2]
+            ctrlW = ctrlW + 14 + sliderW + 6 + lw(p[2])
+        end
     end
-    for _, r in ipairs(frame.headerParts.alpha) do r:SetShown(showAlpha) end
-    for _, r in ipairs(frame.headerParts.scale) do r:SetShown(showScale) end
-    for _, sld in ipairs(frame.headerSliders) do
-        if math.abs((sld:GetWidth() or 0) - sliderW) > 0.5 then sld:SetWidth(sliderW); sld:Refresh() end
-    end
-    if showScale then ctrlW = ctrlW + 18 + sliderW + 8 + sl end
-    if showAlpha then ctrlW = ctrlW + 18 + sliderW + 8 + al end
     frame.ctrlBg:SetWidth(math.min(headerW - 120, ctrlW + 12))
     frame.headerW, frame.ctrlW = headerW, ctrlW
     Window.LayoutPageSearch()
@@ -994,6 +1024,8 @@ function Window.SearchEntries(q)
                 if section.title ~= "" then offer(section.title, score(section.title, q), section.title, true) end
                 for _, row in ipairs(section.rows) do
                     local label = row.label and row.label:GetText() or row.searchTitle
+                    -- rows that are switched off for you (show = false) are not offered
+                    if row.opts and row.opts.show and not row.opts.show() then label = nil end
                     if label and label ~= "" then
                         local sc = score(label, q)
                         if not sc and #q >= 3 and form.RowText(row):lower():find(q, 1, true) then sc = 3 end
